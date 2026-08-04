@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>nagare</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230D1512'/%3E%3Ctext y='25' x='16' text-anchor='middle' font-size='24' fill='%238CFFC0'%3E%E6%B5%81%3C/text%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="mark">流 nagare</div>
+
+      <form class="search" id="search-form" autocomplete="off">
+        <div class="field" data-squircle data-radius="14">
+          <input
+            id="q"
+            type="text"
+            placeholder="search youtube, or paste a url"
+            spellcheck="false"
+          />
+        </div>
+        <button class="btn primary" type="submit" data-squircle data-radius="14">go</button>
+      </form>
+
+      <label class="quality">
+        <span class="dim">quality</span>
+        <div class="field tight" data-squircle data-radius="12">
+          <select id="quality"></select>
+        </div>
+      </label>
+    </header>
+
+    <div class="layout">
+      <main>
+        <section id="player-panel" class="panel player hidden" data-squircle>
+          <div class="player-frame">
+            <video id="player" controls playsinline></video>
+          </div>
+          <div class="player-meta">
+            <div class="grow">
+              <div id="player-title" class="title-lg"></div>
+              <div id="player-sub" class="dim"></div>
+            </div>
+            <button class="btn ghost" id="player-mpv" data-squircle data-radius="12">mpv</button>
+            <button class="btn ghost" id="player-close" data-squircle data-radius="12">close</button>
+          </div>
+        </section>
+
+        <nav class="tabs">
+          <button class="tab on" data-view="browse" data-squircle data-radius="12">browse</button>
+          <button class="tab" data-view="library" data-squircle data-radius="12">library</button>
+          <span class="spacer"></span>
+          <span id="status" class="dim"></span>
+        </nav>
+
+        <div id="grid" class="grid"></div>
+        <div id="empty" class="empty dim">
+          search for something, or paste a youtube url.<br />
+          downloads start streaming to the player before they finish.
+        </div>
+      </main>
+
+      <aside class="queue">
+        <div class="queue-head">
+          <span class="title-lg">queue</span>
+          <span id="queue-count" class="dim"></span>
+        </div>
+        <div id="queue-list"></div>
+        <div id="queue-empty" class="dim pad">nothing downloading.</div>
+      </aside>
+    </div>
+
+    <script src="/static/vendor/hls.min.js"></script>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

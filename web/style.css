@@ -1,0 +1,474 @@
+/* GREENSTEEL, per ~/.config/hypr/DESIGN.md.
+   Backgrounds are only void/abyss/dark. Text never sits on brushed or edge.
+   Two font sizes; "small" is normal demoted with colour, not a smaller size.
+   Corners come from squircle.js, never from border-radius. */
+
+:root {
+  --gs-void: #070c0a;
+  --gs-abyss: #0d1512;
+  --gs-dark: #16211c;
+  --gs-body: #22322b;
+  --gs-brushed: #33493f;
+  --gs-edge: #4c6b5c;
+  --gs-lit: #6e9384;
+  --gs-pale: #9dbdaf;
+  --gs-silver: #c9e2d7;
+  --gs-chrome: #eaf6f0;
+  --gs-white: #f7fdfa;
+
+  --gs-verdigris: #3fbf8f;
+  --gs-lush: #5fd99a;
+  --gs-phosphor: #8cffc0;
+  --gs-mint: #5ff2c4;
+  --gs-brass: #d8c48c;
+  --gs-red: #e06b7a;
+
+  --fs-normal: 18px;
+  --fs-large: 27px;
+  --font-pixel: "Monocraft", ui-monospace, monospace;
+
+  --gap: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--gs-void);
+  color: var(--gs-silver);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  line-height: 1.45;
+  /* Pixel type wants to stay on the pixel grid. */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+}
+
+.dim {
+  color: var(--gs-lit);
+}
+.hidden {
+  display: none !important;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.spacer {
+  flex: 1;
+}
+.pad {
+  padding: var(--gap);
+}
+
+.title-lg {
+  font-size: var(--fs-large);
+  color: var(--gs-chrome);
+  line-height: 1.2;
+}
+
+/* ------------------------------------------------------------------ top bar */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 14px var(--gap);
+  background: var(--gs-abyss);
+  border-bottom: 1px solid var(--gs-brushed);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.mark {
+  font-size: var(--fs-large);
+  color: var(--gs-phosphor);
+  white-space: nowrap;
+  /* the specular spike, used once */
+  text-shadow: 0 0 18px rgba(140, 255, 192, 0.25);
+}
+
+.search {
+  display: flex;
+  gap: 10px;
+  flex: 1;
+  max-width: 720px;
+}
+
+.field {
+  background: var(--gs-dark);
+  border: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  height: 46px;
+  /* an inner lit edge without a border, since clip-path eats borders */
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+}
+.field.tight {
+  height: 40px;
+  padding: 0 10px;
+  flex: none;
+}
+.field:focus-within {
+  box-shadow: inset 0 0 0 1px var(--gs-verdigris);
+}
+
+.field input,
+.field select {
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--gs-chrome);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  width: 100%;
+}
+.field input::placeholder {
+  color: var(--gs-lit);
+}
+.field select option {
+  background: var(--gs-dark);
+  color: var(--gs-silver);
+}
+
+.quality {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.btn {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  color: var(--gs-silver);
+  background: var(--gs-body);
+  border: 0;
+  padding: 0 18px;
+  height: 46px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 120ms linear, color 120ms linear;
+}
+.btn:hover {
+  background: var(--gs-brushed);
+  color: var(--gs-chrome);
+}
+.btn.primary {
+  background: var(--gs-verdigris);
+  color: var(--gs-void);
+}
+.btn.primary:hover {
+  background: var(--gs-lush);
+}
+.btn.ghost {
+  background: var(--gs-dark);
+  height: 38px;
+  padding: 0 14px;
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+}
+.btn.ghost:hover {
+  background: var(--gs-body);
+}
+.btn.danger:hover {
+  background: var(--gs-red);
+  color: var(--gs-void);
+}
+.btn:disabled {
+  color: var(--gs-edge);
+  cursor: default;
+  background: var(--gs-dark);
+}
+
+/* ------------------------------------------------------------------- layout */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--gap);
+  padding: var(--gap);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.panel {
+  background: var(--gs-abyss);
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+}
+
+/* -------------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tab {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  background: transparent;
+  color: var(--gs-lit);
+  border: 0;
+  padding: 6px 16px;
+  height: 38px;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--gs-silver);
+}
+.tab.on {
+  background: var(--gs-dark);
+  color: var(--gs-phosphor);
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+}
+
+/* ------------------------------------------------------------------ player */
+
+.player {
+  overflow: hidden;
+  background: var(--gs-void);
+}
+
+.player-frame {
+  background: #000;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+}
+
+.player video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+}
+
+.player-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px var(--gap);
+  background: var(--gs-abyss);
+}
+
+.player-meta .title-lg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------------- grid */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--gap);
+}
+
+.card {
+  background: var(--gs-dark);
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow 140ms linear;
+}
+.card:hover {
+  box-shadow: inset 0 0 0 1px var(--gs-edge);
+}
+.card.in-library {
+  box-shadow: inset 0 0 0 1px var(--gs-verdigris);
+}
+
+.thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--gs-body);
+  overflow: hidden;
+  cursor: pointer;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  background: rgba(7, 12, 10, 0.88);
+  color: var(--gs-silver);
+  padding: 2px 8px;
+  font-size: var(--fs-normal);
+  line-height: 1.3;
+}
+.badge.left {
+  left: 8px;
+  right: auto;
+  color: var(--gs-phosphor);
+}
+
+.card-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.card-title {
+  color: var(--gs-silver);
+  /* two lines, then ellipsis */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+
+.card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+.card-actions .btn {
+  height: 38px;
+  padding: 0 14px;
+  flex: 1;
+}
+
+.empty {
+  padding: 60px var(--gap);
+  text-align: center;
+  line-height: 1.8;
+}
+
+/* ------------------------------------------------------------------- queue */
+
+.queue {
+  background: var(--gs-abyss);
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+  position: sticky;
+  top: calc(74px + var(--gap));
+  max-height: calc(100vh - 74px - var(--gap) * 2);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.queue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 14px var(--gap);
+  border-bottom: 1px solid var(--gs-brushed);
+  position: sticky;
+  top: 0;
+  background: var(--gs-abyss);
+}
+
+.job {
+  padding: 14px var(--gap);
+  border-bottom: 1px solid var(--gs-brushed);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.job-title {
+  color: var(--gs-silver);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.job-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+/* The progress track. The fill is the metal ramp: mostly dark body with one
+   bright specular stop near the leading edge, so it reads as a lit edge
+   travelling along the bar rather than as a flat green fill. */
+.track {
+  height: 10px;
+  background: var(--gs-dark);
+  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+  overflow: hidden;
+  position: relative;
+}
+
+.fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(
+    90deg,
+    var(--gs-verdigris) 0%,
+    var(--gs-lush) 72%,
+    var(--gs-phosphor) 92%,
+    var(--gs-white) 100%
+  );
+}
+
+.job.is-failed .fill {
+  background: var(--gs-red);
+}
+.job.is-done .fill {
+  background: var(--gs-verdigris);
+}
+.job.is-queued .fill {
+  background: var(--gs-brushed);
+}
+
+.job-actions {
+  display: flex;
+  gap: 8px;
+}
+.job-actions .btn {
+  flex: 1;
+}
+
+.stage {
+  color: var(--gs-lit);
+}
+.stage.live {
+  color: var(--gs-phosphor);
+}
+.stage.err {
+  color: var(--gs-red);
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* The one place the mint metal appears: something is watchable right now. */
+.job.is-live {
+  box-shadow: inset 3px 0 0 0 var(--gs-mint);
+}
