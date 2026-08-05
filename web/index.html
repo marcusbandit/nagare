@@ -11,67 +11,263 @@
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <header class="bar">
-      <div class="mark">流 nagare</div>
+    <header class="bar" id="bar">
+      <button class="mark" id="home" title="home">流 nagare</button>
 
       <form class="search" id="search-form" autocomplete="off">
-        <div class="field" data-squircle data-radius="14">
+        <div class="field" data-squircle data-radius="14" data-edge>
+          <input id="q" type="text" placeholder="search, or paste a url" spellcheck="false" />
+        </div>
+        <button class="btn primary" type="submit" data-squircle data-radius="14">go</button>
+      </form>
+
+      <div class="field tight" data-squircle data-radius="12" data-edge>
+        <select id="quality" title="download quality"></select>
+      </div>
+      <button class="btn ghost" id="tab-library" data-squircle data-radius="12">library</button>
+      <button class="btn ghost" id="tab-filters" data-squircle data-radius="12">filters</button>
+      <button class="btn ghost" id="tab-queue" data-squircle data-radius="12">
+        queue<span id="queue-pip" class="pip hidden"></span>
+      </button>
+    </header>
+
+    <!-- ---------------------------------------------------------- browse -->
+    <section id="view-browse" class="view">
+      <!-- Nothing searched yet: the search is the page. -->
+      <div id="hero" class="hero">
+        <div class="hero-mark">流 nagare</div>
+        <div class="hero-tag dim">watch it while it downloads</div>
+        <div class="field hero-field" data-squircle data-radius="20" data-edge>
           <input
-            id="q"
+            id="hero-q"
             type="text"
             placeholder="search youtube, or paste a url"
             spellcheck="false"
           />
         </div>
-        <button class="btn primary" type="submit" data-squircle data-radius="14">go</button>
-      </form>
+        <div class="hero-hint dim" id="hero-hint">type to search &middot; enter for the full grid</div>
+        <div id="hero-results" class="hero-results"></div>
+      </div>
 
-      <label class="quality">
-        <span class="dim">quality</span>
-        <div class="field tight" data-squircle data-radius="12">
-          <select id="quality"></select>
-        </div>
-      </label>
-    </header>
-
-    <div class="layout">
-      <main>
-        <section id="player-panel" class="panel player hidden" data-squircle>
-          <div class="player-frame">
-            <video id="player" controls playsinline></video>
-          </div>
-          <div class="player-meta">
-            <div class="grow">
-              <div id="player-title" class="title-lg"></div>
-              <div id="player-sub" class="dim"></div>
-            </div>
-            <button class="btn ghost" id="player-mpv" data-squircle data-radius="12">mpv</button>
-            <button class="btn ghost" id="player-close" data-squircle data-radius="12">close</button>
-          </div>
-        </section>
-
-        <nav class="tabs">
-          <button class="tab on" data-view="browse" data-squircle data-radius="12">browse</button>
-          <button class="tab" data-view="library" data-squircle data-radius="12">library</button>
+      <div id="browse-body" class="hidden">
+        <div class="viewhead">
+          <span id="browse-title" class="title-lg">results</span>
           <span class="spacer"></span>
           <span id="status" class="dim"></span>
-        </nav>
+          <button class="btn ghost hidden" id="grab-all" data-squircle data-radius="12"></button>
+        </div>
+
+        <!-- Library only: what is taking up space and what you have finished. -->
+        <div id="lib-bar" class="lib-bar hidden" data-squircle data-radius="14" data-edge>
+          <span id="lib-summary"></span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="lib-sweep" data-squircle data-radius="12">
+            delete watched
+          </button>
+        </div>
 
         <div id="grid" class="grid"></div>
-        <div id="empty" class="empty dim">
-          search for something, or paste a youtube url.<br />
-          downloads start streaming to the player before they finish.
-        </div>
-      </main>
+        <div id="empty" class="empty dim"></div>
+      </div>
+    </section>
 
-      <aside class="queue">
-        <div class="queue-head">
-          <span class="title-lg">queue</span>
-          <span id="queue-count" class="dim"></span>
+    <!-- ----------------------------------------------------------- watch -->
+    <section id="view-watch" class="view hidden">
+      <div class="watch-main">
+        <div class="player-wrap" id="player-wrap" data-squircle data-radius="18">
+          <div class="player-canvas">
+            <video id="video" playsinline></video>
+          </div>
+
+          <div class="player-center" id="player-center"></div>
+
+          <div class="player-toast hidden" id="sb-toast" data-squircle data-radius="12" data-edge>
+            <span id="sb-toast-text"></span>
+            <button class="btn ghost tiny" id="sb-undo" data-squircle data-radius="9">undo</button>
+          </div>
+
+          <div class="player-skip hidden" id="sb-manual" data-squircle data-radius="12" data-edge>
+            <span id="sb-manual-text"></span>
+          </div>
+
+          <div class="player-next hidden" id="next-card" data-squircle data-radius="14" data-edge>
+            <span class="dim">up next in <b id="next-count">10</b></span>
+            <span id="next-title"></span>
+            <button class="btn primary tiny" id="next-go" data-squircle data-radius="9">play</button>
+            <button class="btn ghost tiny" id="next-stop" data-squircle data-radius="9">stay</button>
+          </div>
+
+          <div class="player-controls" id="player-controls" data-squircle data-radius="16" data-edge>
+            <div class="player-scrub-wrap" id="scrub-wrap">
+              <div class="scrub-track" id="scrub-track">
+                <div class="scrub-buffered" id="scrub-buffered"></div>
+                <div class="scrub-bands" id="scrub-bands"></div>
+                <div class="scrub-played" id="scrub-played"></div>
+                <div class="scrub-knob" id="scrub-knob"></div>
+              </div>
+              <input
+                class="player-scrub"
+                id="scrub"
+                type="range"
+                min="0"
+                max="1000"
+                step="1"
+                value="0"
+                aria-label="Seek"
+              />
+              <div class="scrub-bubble hidden" id="scrub-bubble" data-squircle data-radius="10" data-edge>
+                <canvas id="scrub-preview" width="160" height="90"></canvas>
+                <span id="scrub-bubble-time"></span>
+              </div>
+            </div>
+
+            <div class="player-controls-row">
+              <button class="pbtn" id="btn-play" title="Play/pause (space)"></button>
+              <button class="pbtn" id="btn-back" title="Back 10s (j)"></button>
+              <button class="pbtn" id="btn-fwd" title="Forward 10s (l)"></button>
+
+              <div class="player-volume">
+                <button class="pbtn" id="btn-mute" title="Mute (m)"></button>
+                <input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume" />
+              </div>
+
+              <span class="ptime" id="ptime">0:00 / 0:00</span>
+              <span class="live-pill hidden" id="live-pill">downloading</span>
+
+              <span class="spacer"></span>
+
+              <button class="pbtn wide" id="btn-speed" title="Playback speed (hold the picture for 2x)">1x</button>
+              <button class="pbtn wide" id="btn-sleep" title="Sleep timer">zZ</button>
+              <button class="pbtn" id="btn-sb" title="SponsorBlock"></button>
+              <button class="pbtn" id="btn-pip" title="Picture in picture"></button>
+              <button class="pbtn" id="btn-full" title="Fullscreen (f)"></button>
+            </div>
+          </div>
         </div>
+
+        <div class="watch-meta">
+          <h1 class="title-lg" id="w-title"></h1>
+          <div class="watch-sub">
+            <span class="dim" id="w-sub"></span>
+            <span id="w-votes" class="votes dim"></span>
+            <span class="spacer"></span>
+            <button class="btn ghost" id="w-queue" data-squircle data-radius="12">+ queue</button>
+            <button class="btn ghost" id="w-mpv" data-squircle data-radius="12">mpv</button>
+            <button class="btn primary" id="w-get" data-squircle data-radius="12">download</button>
+          </div>
+          <div class="desc" id="w-desc" data-squircle data-radius="14" data-edge></div>
+        </div>
+
+        <div class="comments" id="comments">
+          <div class="viewhead">
+            <span class="title-lg">comments</span>
+            <span class="dim" id="c-count"></span>
+          </div>
+          <div id="c-list"></div>
+          <div id="c-state" class="dim pad"></div>
+        </div>
+      </div>
+
+      <aside class="watch-side">
+        <div class="viewhead">
+          <span class="title-lg">up next</span>
+          <span class="spacer"></span>
+          <label class="toggle dim">
+            <input type="checkbox" id="autoplay" /> autoplay
+          </label>
+        </div>
+        <div id="w-next"></div>
+      </aside>
+    </section>
+
+    <!-- ----------------------------------------------------------- queue -->
+    <div class="drawer hidden" id="drawer">
+      <div class="drawer-panel" data-squircle data-radius="18" data-edge>
+        <div class="viewhead">
+          <span class="title-lg">queue</span>
+          <span class="spacer"></span>
+          <span id="queue-count" class="dim"></span>
+          <button class="btn ghost" id="drawer-close" data-squircle data-radius="12">close</button>
+        </div>
+
+        <div class="subhead dim">up next</div>
+        <div id="playlist"></div>
+        <div id="playlist-empty" class="dim pad">nothing queued to play.</div>
+
+        <div class="subhead dim">downloads</div>
         <div id="queue-list"></div>
         <div id="queue-empty" class="dim pad">nothing downloading.</div>
-      </aside>
+      </div>
+    </div>
+
+    <!-- --------------------------------------------------------- filters -->
+    <div class="drawer hidden" id="filters">
+      <div class="drawer-panel" data-squircle data-radius="18" data-edge>
+        <div class="viewhead">
+          <span class="title-lg">filters</span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="filters-close" data-squircle data-radius="12">close</button>
+        </div>
+
+        <div class="subhead dim">search</div>
+        <label class="row">
+          <span>sort by</span>
+          <div class="field tight" data-squircle data-radius="10" data-edge>
+            <select id="f-sort">
+              <option value="relevance">relevance</option>
+              <option value="date">upload date</option>
+              <option value="views">view count</option>
+              <option value="rating">rating</option>
+            </select>
+          </div>
+        </label>
+        <label class="row">
+          <span>uploaded</span>
+          <div class="field tight" data-squircle data-radius="10" data-edge>
+            <select id="f-date">
+              <option value="any">any time</option>
+              <option value="hour">last hour</option>
+              <option value="today">today</option>
+              <option value="week">this week</option>
+              <option value="month">this month</option>
+              <option value="year">this year</option>
+            </select>
+          </div>
+        </label>
+        <label class="row">
+          <span>length</span>
+          <div class="field tight" data-squircle data-radius="10" data-edge>
+            <select id="f-dur">
+              <option value="any">any</option>
+              <option value="short">under 4 min</option>
+              <option value="medium">4 to 20 min</option>
+              <option value="long">over 20 min</option>
+            </select>
+          </div>
+        </label>
+
+        <div class="subhead dim">hide</div>
+        <label class="row"><span>shorts (under a minute)</span><input type="checkbox" id="f-shorts" /></label>
+        <label class="row"><span>things I have watched</span><input type="checkbox" id="f-watched" /></label>
+
+        <div class="subhead dim">blocked words in titles</div>
+        <div class="chips" id="chip-words"></div>
+        <form class="chip-add" id="add-word">
+          <div class="field tight" data-squircle data-radius="10" data-edge>
+            <input id="word-input" placeholder="add a word" spellcheck="false" />
+          </div>
+          <button class="btn ghost" type="submit" data-squircle data-radius="10">add</button>
+        </form>
+
+        <div class="subhead dim">blocked channels</div>
+        <div class="chips" id="chip-channels"></div>
+        <form class="chip-add" id="add-channel">
+          <div class="field tight" data-squircle data-radius="10" data-edge>
+            <input id="channel-input" placeholder="add a channel" spellcheck="false" />
+          </div>
+          <button class="btn ghost" type="submit" data-squircle data-radius="10">add</button>
+        </form>
+      </div>
     </div>
 
     <script src="/static/vendor/hls.min.js"></script>

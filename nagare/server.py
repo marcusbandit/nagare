@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, ytx
+from . import config, extras, ytx
 from .jobs import manager
 
 config.ensure_dirs()
@@ -44,7 +44,13 @@ async def api_config() -> dict:
 
 
 @app.get("/api/search")
-async def api_search(q: str, limit: int = 24) -> JSONResponse:
+async def api_search(
+    q: str,
+    limit: int = 24,
+    sort: str = "relevance",
+    date: str = "any",
+    duration: str = "any",
+) -> JSONResponse:
     q = q.strip()
     if not q:
         return JSONResponse({"results": []})
@@ -57,10 +63,23 @@ async def api_search(q: str, limit: int = 24) -> JSONResponse:
         return JSONResponse({"results": resolved["entries"], "kind": resolved["type"],
                              "title": resolved["title"]})
     try:
-        results = await ytx.search(q, min(max(limit, 1), 50))
+        filtered = sort != "relevance" or date != "any" or duration != "any"
+        if filtered:
+            # ytsearch: has no filter syntax, so go through a real results page
+            # with the `sp` protobuf instead.
+            results = await ytx.search_filtered(
+                extras.search_url(q, sort, date, duration), min(max(limit, 1), 50)
+            )
+        else:
+            results = await ytx.search(q, min(max(limit, 1), 50))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
     return JSONResponse({"results": results, "kind": "search", "title": q})
+
+
+@app.get("/api/votes/{video_id}")
+async def api_votes(video_id: str) -> JSONResponse:
+    return JSONResponse(await extras.votes(video_id))
 
 
 @app.post("/api/download")
@@ -77,6 +96,29 @@ async def api_download(payload: dict) -> JSONResponse:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
     return JSONResponse({"jobs": created})
+
+
+@app.get("/api/sponsorblock/{video_id}")
+async def api_sponsorblock(video_id: str) -> JSONResponse:
+    return JSONResponse({"segments": await extras.sponsor_segments(video_id)})
+
+
+@app.get("/api/comments/{video_id}")
+async def api_comments(video_id: str, limit: int = 120) -> JSONResponse:
+    return JSONResponse(await extras.comments(video_id, min(max(limit, 1), 500)))
+
+
+@app.get("/api/video/{video_id}")
+async def api_video(video_id: str) -> JSONResponse:
+    """Full metadata for the watch page (description, counts, related fields)."""
+    try:
+        resolved = await ytx.resolve(f"https://www.youtube.com/watch?v={video_id}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(404, str(exc)) from exc
+    entries = resolved.get("entries") or []
+    if not entries:
+        raise HTTPException(404, "video not found")
+    return JSONResponse(entries[0])
 
 
 @app.get("/api/jobs")

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Launch nagare as a desktop app (Electron shell + its own python server).
+cd /home/bandit/Projects/WebApps/nagare
+exec ./node_modules/.bin/electron . --ozone-platform-hint=auto "$@"

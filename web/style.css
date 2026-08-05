@@ -1,7 +1,7 @@
 /* GREENSTEEL, per ~/.config/hypr/DESIGN.md.
    Backgrounds are only void/abyss/dark. Text never sits on brushed or edge.
    Two font sizes; "small" is normal demoted with colour, not a smaller size.
-   Corners come from squircle.js, never from border-radius. */
+   Corners AND borders come from squircle.js, never from border-radius. */
 
 :root {
   --gs-void: #070c0a;
@@ -28,16 +28,19 @@
   --font-pixel: "Monocraft", ui-monospace, monospace;
 
   --gap: 18px;
+  --barh: 74px;
 }
 
 * {
   box-sizing: border-box;
+  min-width: 0; /* nothing may push its flex/grid parent wider than the viewport */
 }
 
 html,
 body {
-  margin: 0;
   height: 100%;
+  margin: 0;
+  overflow-x: hidden;
 }
 
 body {
@@ -46,32 +49,47 @@ body {
   font-family: var(--font-pixel);
   font-size: var(--fs-normal);
   line-height: 1.45;
-  /* Pixel type wants to stay on the pixel grid. */
   -webkit-font-smoothing: none;
   font-smooth: never;
 }
 
-.dim {
-  color: var(--gs-lit);
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
 }
-.hidden {
-  display: none !important;
-}
-.grow {
-  flex: 1;
-  min-width: 0;
-}
-.spacer {
-  flex: 1;
-}
-.pad {
-  padding: var(--gap);
-}
+
+.dim { color: var(--gs-lit); }
+.hidden { display: none !important; }
+.spacer { flex: 1; min-width: 0; }
+.pad { padding: var(--gap); }
 
 .title-lg {
   font-size: var(--fs-large);
   color: var(--gs-chrome);
   line-height: 1.2;
+  margin: 0;
+  font-weight: normal;
+}
+
+/* The squircle border. An inset box-shadow draws a rectangular ring, so clipping
+   it to a squircle cuts the ring away at the corners and the outline breaks.
+   squircle.js injects this svg stroking the exact clip path instead; the parent
+   clip trims the stroke's outer half, leaving a clean 1px inner edge on the curve. */
+[data-edge] { position: relative; }
+.sq-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+.sq-edge path {
+  fill: none;
+  stroke: var(--sq-border, var(--gs-brushed));
+  stroke-width: 2;
+  transition: stroke 140ms linear;
 }
 
 /* ------------------------------------------------------------------ top bar */
@@ -79,20 +97,25 @@ body {
 .bar {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: 12px;
   padding: 14px var(--gap);
   background: var(--gs-abyss);
   border-bottom: 1px solid var(--gs-brushed);
   position: sticky;
   top: 0;
   z-index: 40;
+  height: var(--barh);
 }
 
 .mark {
   font-size: var(--fs-large);
   color: var(--gs-phosphor);
   white-space: nowrap;
-  /* the specular spike, used once */
+  background: none;
+  border: 0;
+  font-family: var(--font-pixel);
+  cursor: pointer;
+  padding: 0;
   text-shadow: 0 0 18px rgba(140, 255, 192, 0.25);
 }
 
@@ -100,28 +123,22 @@ body {
   display: flex;
   gap: 10px;
   flex: 1;
-  max-width: 720px;
+  min-width: 0;
+  max-width: 760px;
 }
 
 .field {
   background: var(--gs-dark);
   border: 0;
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   padding: 0 14px;
   height: 46px;
-  /* an inner lit edge without a border, since clip-path eats borders */
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
 }
-.field.tight {
-  height: 40px;
-  padding: 0 10px;
-  flex: none;
-}
-.field:focus-within {
-  box-shadow: inset 0 0 0 1px var(--gs-verdigris);
-}
+.field.tight { height: 46px; padding: 0 10px; flex: none; }
+.field:focus-within { --sq-border: var(--gs-verdigris); }
 
 .field input,
 .field select {
@@ -132,20 +149,18 @@ body {
   font-family: var(--font-pixel);
   font-size: var(--fs-normal);
   width: 100%;
+  min-width: 0;
 }
-.field input::placeholder {
-  color: var(--gs-lit);
-}
-.field select option {
-  background: var(--gs-dark);
-  color: var(--gs-silver);
-}
+.field input::placeholder { color: var(--gs-lit); }
+.field select option { background: var(--gs-dark); color: var(--gs-silver); }
 
-.quality {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  white-space: nowrap;
+.pip {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 8px;
+  background: var(--gs-mint);
+  vertical-align: middle;
 }
 
 /* ------------------------------------------------------------------ buttons */
@@ -160,125 +175,28 @@ body {
   height: 46px;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 120ms linear, color 120ms linear;
-}
-.btn:hover {
-  background: var(--gs-brushed);
-  color: var(--gs-chrome);
-}
-.btn.primary {
-  background: var(--gs-verdigris);
-  color: var(--gs-void);
-}
-.btn.primary:hover {
-  background: var(--gs-lush);
-}
-.btn.ghost {
-  background: var(--gs-dark);
-  height: 38px;
-  padding: 0 14px;
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
-}
-.btn.ghost:hover {
-  background: var(--gs-body);
-}
-.btn.danger:hover {
-  background: var(--gs-red);
-  color: var(--gs-void);
-}
-.btn:disabled {
-  color: var(--gs-edge);
-  cursor: default;
-  background: var(--gs-dark);
-}
-
-/* ------------------------------------------------------------------- layout */
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: var(--gap);
-  padding: var(--gap);
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
-
-.panel {
-  background: var(--gs-abyss);
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
-}
-
-/* -------------------------------------------------------------------- tabs */
-
-.tabs {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.tab {
-  font-family: var(--font-pixel);
-  font-size: var(--fs-normal);
-  background: transparent;
-  color: var(--gs-lit);
-  border: 0;
-  padding: 6px 16px;
-  height: 38px;
-  cursor: pointer;
-}
-.tab:hover {
-  color: var(--gs-silver);
-}
-.tab.on {
-  background: var(--gs-dark);
-  color: var(--gs-phosphor);
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
-}
-
-/* ------------------------------------------------------------------ player */
-
-.player {
-  overflow: hidden;
-  background: var(--gs-void);
-}
-
-.player-frame {
-  background: #000;
-  aspect-ratio: 16 / 9;
-  width: 100%;
-}
-
-.player video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  background: #000;
-}
-
-.player-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px var(--gap);
-  background: var(--gs-abyss);
-}
-
-.player-meta .title-lg {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: background 120ms linear, color 120ms linear;
+}
+.btn:hover { background: var(--gs-brushed); color: var(--gs-chrome); }
+.btn.primary { background: var(--gs-verdigris); color: var(--gs-void); }
+.btn.primary:hover { background: var(--gs-lush); }
+.btn.ghost { background: var(--gs-dark); height: 42px; padding: 0 14px; }
+.btn.ghost:hover { background: var(--gs-body); }
+.btn.tiny { height: 32px; padding: 0 10px; }
+.btn.danger:hover { background: var(--gs-red); color: var(--gs-void); }
+.btn:disabled { color: var(--gs-edge); cursor: default; background: var(--gs-dark); }
+
+/* ------------------------------------------------------------------- views */
+
+.view { padding: var(--gap); }
+
+.viewhead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: var(--gap);
 }
 
 /* -------------------------------------------------------------------- grid */
@@ -291,18 +209,13 @@ main {
 
 .card {
   background: var(--gs-dark);
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
-  overflow: hidden;
+  --sq-border: var(--gs-brushed);
   display: flex;
   flex-direction: column;
-  transition: box-shadow 140ms linear;
+  min-width: 0;
 }
-.card:hover {
-  box-shadow: inset 0 0 0 1px var(--gs-edge);
-}
-.card.in-library {
-  box-shadow: inset 0 0 0 1px var(--gs-verdigris);
-}
+.card:hover { --sq-border: var(--gs-edge); }
+.card.in-library { --sq-border: var(--gs-verdigris); }
 
 .thumb {
   position: relative;
@@ -311,12 +224,7 @@ main {
   overflow: hidden;
   cursor: pointer;
 }
-.thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .badge {
   position: absolute;
@@ -325,107 +233,400 @@ main {
   background: rgba(7, 12, 10, 0.88);
   color: var(--gs-silver);
   padding: 2px 8px;
-  font-size: var(--fs-normal);
-  line-height: 1.3;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.badge.left {
-  left: 8px;
-  right: auto;
-  color: var(--gs-phosphor);
-}
+.badge.left { left: 8px; right: auto; color: var(--gs-phosphor); }
 
 .card-body {
-  padding: 12px 14px 14px;
+  padding: 12px 16px 18px; /* bottom pad clears the squircle's corner sweep */
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: 1;
+  min-width: 0;
 }
 
 .card-title {
   color: var(--gs-silver);
-  /* two lines, then ellipsis */
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   line-height: 1.3;
+  cursor: pointer;
+  word-break: break-word;
+}
+.card-title:hover { color: var(--gs-chrome); }
+
+.card-sub {
+  color: var(--gs-lit);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card-actions {
   display: flex;
   gap: 8px;
   margin-top: auto;
+  min-width: 0;
 }
+/* Long labels ("starting the streams") must ellipsis, never widen the card. */
 .card-actions .btn {
-  height: 38px;
-  padding: 0 14px;
-  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-.empty {
-  padding: 60px var(--gap);
-  text-align: center;
-  line-height: 1.8;
+.empty { padding: 60px var(--gap); text-align: center; line-height: 1.8; }
+
+/* ------------------------------------------------------------------- watch */
+
+#view-watch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--gap);
+  align-items: start;
+}
+@media (max-width: 1180px) {
+  #view-watch { grid-template-columns: minmax(0, 1fr); }
+  .watch-side { display: none; }
 }
 
-/* ------------------------------------------------------------------- queue */
+.watch-main { min-width: 0; display: flex; flex-direction: column; gap: var(--gap); }
 
-.queue {
-  background: var(--gs-abyss);
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
-  position: sticky;
-  top: calc(74px + var(--gap));
-  max-height: calc(100vh - 74px - var(--gap) * 2);
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.queue-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 14px var(--gap);
-  border-bottom: 1px solid var(--gs-brushed);
-  position: sticky;
-  top: 0;
-  background: var(--gs-abyss);
-}
-
-.job {
-  padding: 14px var(--gap);
-  border-bottom: 1px solid var(--gs-brushed);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.job-title {
-  color: var(--gs-silver);
+.player-wrap {
+  position: relative;
+  background: #000;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  --sq-border: transparent;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+.player-wrap:fullscreen { aspect-ratio: auto; height: 100vh; clip-path: none !important; }
+.player-wrap.cursor-hidden,
+.player-wrap.cursor-hidden * { cursor: none; }
+
+.player-canvas { position: absolute; inset: 0; }
+.player-canvas video { width: 100%; height: 100%; display: block; background: #000; }
+
+/* Big centre affordance: a play glyph that fades on state change. */
+.player-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms linear;
+}
+.player-center.show { opacity: 1; }
+.player-center svg { width: 84px; height: 84px; color: var(--gs-chrome); filter: drop-shadow(0 0 24px rgba(0,0,0,0.6)); }
+
+/* The control island. */
+.player-controls {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 14px 8px;
+  background: rgba(13, 21, 18, 0.86);
+  --sq-border: var(--gs-brushed);
+  backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: opacity 180ms linear, transform 180ms linear;
+  z-index: 10;
+}
+.player-controls.is-hidden {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
 }
 
-.job-line {
+/* ---- scrubber ---- */
+
+.player-scrub-wrap {
+  position: relative;
+  height: 26px;
+  display: flex;
+  align-items: center;
+}
+
+.scrub-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: var(--gs-dark);
+  overflow: hidden;
+  pointer-events: none;
+}
+.scrub-buffered { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--gs-brushed); }
+.scrub-played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(
+    90deg,
+    var(--gs-verdigris) 0%,
+    var(--gs-lush) 76%,
+    var(--gs-phosphor) 94%,
+    var(--gs-white) 100%
+  );
+}
+.scrub-bands { position: absolute; inset: 0; }
+/* SponsorBlock segments: brass for anything promotional, mint for structural.
+   Both are secondary metals, so they read as "not the normal timeline" without
+   leaving the palette. */
+.scrub-bands .band { position: absolute; top: 0; bottom: 0; opacity: 0.9; }
+.band.sponsor, .band.selfpromo, .band.interaction { background: var(--gs-brass); }
+.band.intro, .band.outro, .band.preview, .band.filler, .band.music_offtopic { background: var(--gs-mint); }
+
+.scrub-knob {
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 18px;
+  margin-left: -2px;
+  background: var(--gs-white);
+  transform: translateY(-50%) scaleY(0);
+  transition: transform 120ms ease-out;
+  pointer-events: none;
+}
+.player-scrub-wrap:hover .scrub-knob,
+.player-scrub-wrap:focus-within .scrub-knob { transform: translateY(-50%) scaleY(1); }
+
+/* The real input sits invisible on top so keyboard and pointer both work. */
+.player-scrub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.scrub-bubble {
+  position: absolute;
+  bottom: 30px;
+  transform: translateX(-50%);
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-edge);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  z-index: 12;
+}
+.scrub-bubble canvas { display: block; width: 160px; height: 90px; background: var(--gs-void); }
+.scrub-bubble canvas.hidden { display: none; }
+.scrub-bubble span { color: var(--gs-chrome); }
+
+/* ---- control row ---- */
+
+.player-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pbtn {
+  background: transparent;
+  border: 0;
+  color: var(--gs-silver);
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  flex: none;
+  transition: background 120ms linear, color 120ms linear;
+}
+.pbtn:hover { background: var(--gs-body); color: var(--gs-chrome); }
+.pbtn.wide { width: auto; padding: 0 10px; }
+.pbtn.on { color: var(--gs-phosphor); }
+.pbtn.off { color: var(--gs-edge); }
+.pbtn svg { width: 20px; height: 20px; }
+
+.player-volume { display: flex; align-items: center; gap: 4px; flex: none; }
+.vol {
+  width: 0;
+  opacity: 0;
+  height: 6px;
+  transition: width 160ms ease-out, opacity 160ms linear;
+  accent-color: var(--gs-lush);
+  cursor: pointer;
+}
+.player-volume:hover .vol,
+.player-volume:focus-within .vol { width: 90px; opacity: 1; }
+
+.ptime { color: var(--gs-pale); white-space: nowrap; flex: none; padding: 0 4px; }
+
+.live-pill {
+  color: var(--gs-void);
+  background: var(--gs-mint);
+  padding: 1px 8px;
+  white-space: nowrap;
+  flex: none;
+}
+
+/* ---- overlays ---- */
+
+.player-toast,
+.player-skip {
+  position: absolute;
+  right: 16px;
+  bottom: 92px;
+  background: rgba(13, 21, 18, 0.92);
+  --sq-border: var(--gs-brass);
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   gap: 10px;
-  justify-content: space-between;
+  z-index: 11;
+  backdrop-filter: blur(10px);
+  max-width: calc(100% - 32px);
 }
+.player-skip { --sq-border: var(--gs-mint); cursor: pointer; }
+.player-skip:hover { background: rgba(22, 33, 28, 0.96); }
 
-/* The progress track. The fill is the metal ramp: mostly dark body with one
-   bright specular stop near the leading edge, so it reads as a lit edge
-   travelling along the bar rather than as a flat green fill. */
-.track {
-  height: 10px;
+/* ------------------------------------------------------------- watch meta */
+
+.watch-meta { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+#w-title { word-break: break-word; }
+.watch-sub { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.watch-sub .dim { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.desc {
   background: var(--gs-dark);
-  box-shadow: inset 0 0 0 1px var(--gs-brushed);
+  --sq-border: var(--gs-brushed);
+  padding: 14px 16px;
+  color: var(--gs-pale);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 130px;
   overflow: hidden;
+  cursor: pointer;
   position: relative;
 }
+.desc.open { max-height: none; }
+.desc:empty { display: none; }
 
+/* -------------------------------------------------------------- comments */
+
+.comments { display: flex; flex-direction: column; min-width: 0; }
+
+.comment {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--gs-brushed);
+  min-width: 0;
+}
+.comment-avatar {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  background: var(--gs-body);
+  object-fit: cover;
+}
+.comment-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.comment-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.comment-author { color: var(--gs-chrome); }
+.comment-author.op { color: var(--gs-phosphor); }
+.comment-text { color: var(--gs-silver); white-space: pre-wrap; word-break: break-word; }
+.comment-meta { display: flex; gap: 14px; color: var(--gs-lit); }
+.comment-replies { margin-top: 8px; padding-left: 14px; border-left: 1px solid var(--gs-brushed); }
+.reply-toggle {
+  background: none;
+  border: 0;
+  color: var(--gs-lit);
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.reply-toggle:hover { color: var(--gs-phosphor); }
+
+/* ------------------------------------------------------------- watch side */
+
+.watch-side { min-width: 0; display: flex; flex-direction: column; }
+
+.mini {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  cursor: pointer;
+  min-width: 0;
+  background: var(--gs-dark);
+  --sq-border: transparent;
+  margin-bottom: 10px;
+}
+.mini:hover { --sq-border: var(--gs-edge); }
+.mini-thumb { width: 116px; aspect-ratio: 16/9; object-fit: cover; flex: none; background: var(--gs-body); }
+.mini-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mini-title {
+  color: var(--gs-silver);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
+/* ----------------------------------------------------------------- drawer */
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 12, 10, 0.62);
+  z-index: 60;
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--gap);
+}
+.drawer-panel {
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  width: min(430px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+}
+
+.job {
+  padding: 14px 0;
+  border-top: 1px solid var(--gs-brushed);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.job-title { color: var(--gs-silver); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.job-line { display: flex; align-items: center; gap: 10px; justify-content: space-between; min-width: 0; }
+.job-line > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.track { height: 10px; background: var(--gs-dark); overflow: hidden; position: relative; }
 .fill {
   height: 100%;
   width: 0;
@@ -437,38 +638,239 @@ main {
     var(--gs-white) 100%
   );
 }
+.job.is-failed .fill { background: var(--gs-red); }
+.job.is-done .fill { background: var(--gs-verdigris); }
+.job.is-queued .fill { background: var(--gs-brushed); }
 
-.job.is-failed .fill {
-  background: var(--gs-red);
-}
-.job.is-done .fill {
-  background: var(--gs-verdigris);
-}
-.job.is-queued .fill {
-  background: var(--gs-brushed);
-}
+.job-actions { display: flex; gap: 8px; min-width: 0; }
+.job-actions .btn { flex: 1 1 0; min-width: 0; }
 
-.job-actions {
+.stage { color: var(--gs-lit); }
+.stage.live { color: var(--gs-phosphor); }
+.stage.err { color: var(--gs-red); white-space: normal; word-break: break-word; }
+
+.job.is-live { box-shadow: inset 3px 0 0 0 var(--gs-mint); padding-left: 10px; }
+
+/* ================================================================= hero =====
+   Before you have searched anything, the search IS the page. The top bar's own
+   search would be a second, competing target, so it steps aside. */
+
+/* Hide the whole control, wrapper included: hiding just the <select> would leave
+   its bordered box sitting there empty. */
+.bar-quiet .search,
+.bar-quiet .field.tight { visibility: hidden; }
+
+.hero {
+  min-height: calc(100vh - var(--barh) - var(--gap) * 2);
   display: flex;
-  gap: 8px;
-}
-.job-actions .btn {
-  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 var(--gap) 60px;
+  text-align: center;
 }
 
-.stage {
-  color: var(--gs-lit);
-}
-.stage.live {
+.hero-mark {
+  font-size: var(--fs-large);
   color: var(--gs-phosphor);
+  text-shadow: 0 0 32px rgba(140, 255, 192, 0.28);
+  letter-spacing: 2px;
 }
-.stage.err {
-  color: var(--gs-red);
-  white-space: normal;
-  word-break: break-word;
+.hero-tag { letter-spacing: 1px; }
+
+.hero-field {
+  width: min(760px, 100%);
+  height: 64px;
+  /* .field is flex:1, which in this column container would stretch it to fill
+     the whole hero. It is a fixed-height control, not a filler. */
+  flex: none;
+  padding: 0 22px;
+  background: var(--gs-dark);
+  margin-top: 10px;
+}
+.hero-field input { font-size: var(--fs-large); }
+
+.hero-hint { min-height: 26px; }
+
+.hero-results {
+  width: min(760px, 100%);
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  margin-top: 6px;
 }
 
-/* The one place the mint metal appears: something is watchable right now. */
-.job.is-live {
-  box-shadow: inset 3px 0 0 0 var(--gs-mint);
+/* ================================================================ modal ===== */
+
+.ui-host { position: relative; z-index: 90; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 12, 10, 0.72);
+  display: grid;
+  place-items: center;
+  padding: var(--gap);
+  z-index: 90;
 }
+
+.modal {
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-edge);
+  padding: 22px;
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal-body { white-space: pre-wrap; word-break: break-word; max-height: 40vh; overflow: auto; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+.btn.danger-solid { background: var(--gs-red); color: var(--gs-void); }
+.btn.danger-solid:hover { background: #ff8c99; color: var(--gs-void); }
+
+/* ================================================================ toast ===== */
+
+.toast-stack {
+  position: fixed;
+  right: var(--gap);
+  bottom: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 95;
+  pointer-events: none;
+}
+
+.toast {
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  color: var(--gs-silver);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: auto;
+  max-width: 420px;
+  animation: toast-in 180ms ease-out;
+}
+.toast.leaving { opacity: 0; transition: opacity 180ms linear; }
+.toast-ok { --sq-border: var(--gs-verdigris); }
+.toast-err { --sq-border: var(--gs-red); }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ======================================================= library clarity ==== */
+
+.lib-bar {
+  background: var(--gs-dark);
+  --sq-border: var(--gs-brushed);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: var(--gap);
+  min-width: 0;
+}
+.lib-bar > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* How far into a video you are, along the bottom of its poster. */
+.thumb-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(7, 12, 10, 0.7);
+}
+.thumb-progress-fill { height: 100%; background: var(--gs-lush); }
+.thumb-progress-fill.full { background: var(--gs-verdigris); }
+
+.badge.watched { color: var(--gs-void); background: var(--gs-verdigris); }
+
+/* A finished video is still there, just quieter, so unwatched things stand out. */
+.card.is-watched .thumb img { opacity: 0.55; }
+.card.is-watched:hover .thumb img { opacity: 0.85; }
+
+/* ==================================================== autoplay next card ==== */
+
+.player-next {
+  position: absolute;
+  right: 16px;
+  bottom: 92px;
+  background: rgba(13, 21, 18, 0.94);
+  --sq-border: var(--gs-verdigris);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 11;
+  backdrop-filter: blur(10px);
+  max-width: calc(100% - 32px);
+}
+.player-next #next-title {
+  color: var(--gs-chrome);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.player-next b { color: var(--gs-phosphor); }
+
+/* ============================================================== filters ===== */
+
+.subhead {
+  margin: 18px 0 8px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--gs-brushed);
+  padding-bottom: 6px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  min-width: 0;
+}
+.row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row .field { flex: none; width: 190px; height: 40px; }
+.row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--gs-verdigris); flex: none; }
+
+.toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--gs-verdigris); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  background: var(--gs-dark);
+  --sq-border: var(--gs-brushed);
+  padding: 4px 8px 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gs-silver);
+  max-width: 100%;
+  overflow: hidden;
+}
+.chip button {
+  background: none;
+  border: 0;
+  color: var(--gs-lit);
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  padding: 0 2px;
+}
+.chip button:hover { color: var(--gs-red); }
+
+.chip-add { display: flex; gap: 8px; margin-top: 10px; min-width: 0; }
+.chip-add .field { flex: 1; height: 40px; }
+
+.votes { white-space: nowrap; flex: none; }
+
+/* The queue drawer's mini rows need room for their remove button. */
+.mini .btn.tiny { align-self: center; flex: none; }

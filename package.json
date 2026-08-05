@@ -1,0 +1,13 @@
+{
+  "name": "nagare",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Watch YouTube downloads while they land",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^40.0.0"
+  }
+}

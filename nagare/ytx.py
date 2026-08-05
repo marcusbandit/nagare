@@ -7,6 +7,7 @@ they can be killed cleanly and so ffmpeg can split the stream into live HLS.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import urllib.request
 from typing import Any
 
@@ -89,8 +90,29 @@ def _resolve_sync(url: str) -> dict:
     return {"type": "video", "title": info.get("title") or "", "entries": [normalise(info)]}
 
 
+def _search_filtered_sync(url: str, limit: int) -> list[dict]:
+    opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    # extract_flat can hand back a lazy generator, which does not slice.
+    entries = itertools.islice((info or {}).get("entries") or [], limit)
+    out = []
+    for e in entries:
+        if not e:
+            continue
+        normalised = normalise(e)
+        # A results page also yields channels and playlists; keep real videos.
+        if normalised["id"] and len(normalised["id"]) == 11:
+            out.append(normalised)
+    return out
+
+
 async def search(query: str, limit: int = 24) -> list[dict]:
     return await asyncio.to_thread(_search_sync, query, limit)
+
+
+async def search_filtered(url: str, limit: int = 24) -> list[dict]:
+    return await asyncio.to_thread(_search_filtered_sync, url, limit)
 
 
 async def resolve(url: str) -> dict:
