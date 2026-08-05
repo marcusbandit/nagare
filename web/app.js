@@ -20,6 +20,9 @@ const state = {
   channelResults: [], // channel search results
   channelViewing: null, // channel whose page is open
   feedChannel: "", // "" = everyone
+  // Search hits that are not videos, kept out of state.results so nothing tries
+  // to play, queue or autoplay them.
+  hits: { channels: [], playlists: [] },
 };
 
 let player = null;
@@ -125,6 +128,9 @@ function setMode(mode) {
   $("#lib-bar").classList.toggle("hidden", mode !== "library");
   $("#subs-bar").classList.toggle("hidden", mode !== "feed");
   $("#chan-bar").classList.toggle("hidden", mode !== "channel");
+  // Channel and playlist hits belong to one search. Leaving the results, or
+  // starting another search, drops them.
+  clearHits();
   squircleAll();
 }
 
@@ -275,7 +281,7 @@ function renderSubChips() {
   squircleAll();
 }
 
-/** Search results: a row per channel with a subscribe button. */
+/** A row per channel: click it to browse the channel, or subscribe from here. */
 function channelRow(channel) {
   const row = document.createElement("div");
   row.className = "chan-row";
@@ -286,14 +292,20 @@ function channelRow(channel) {
   const body = document.createElement("div");
   body.className = "chan-row-body";
   const name = document.createElement("div");
-  name.className = "chan-row-name";
+  name.className = "chan-row-name chan-name";
   name.textContent = channel.name;
   const meta = document.createElement("div");
   meta.className = "card-sub dim";
-  meta.textContent = [followers(channel.followers), channel.description]
+  meta.textContent = ["channel", followers(channel.followers), channel.description]
     .filter(Boolean)
     .join(" · ");
   body.append(name, meta);
+
+  const ident = document.createElement("button");
+  ident.className = "chan-ident";
+  ident.title = `browse ${channel.name}`;
+  ident.append(avatarFor(channel, 52), body);
+  ident.onclick = () => openChannel(channel.id);
 
   const already = isSubscribed(channel.id);
   const action = button(
@@ -308,8 +320,69 @@ function channelRow(channel) {
         },
   );
 
-  row.append(avatarFor(channel, 52), body, action);
+  row.append(ident, action);
   return row;
+}
+
+/** A playlist match. The app already knows how to list a playlist url, so the
+    row just opens it; there is nothing to download about the playlist itself. */
+function playlistRow(playlist) {
+  const row = document.createElement("div");
+  row.className = "chan-row";
+  row.dataset.squircle = "";
+  row.dataset.radius = "12";
+  row.dataset.edge = "";
+
+  const open = () => openLink(playlist.url);
+
+  const ident = document.createElement("button");
+  ident.className = "chan-ident";
+  ident.title = `open ${playlist.title}`;
+  if (playlist.thumbnail) {
+    const img = document.createElement("img");
+    img.className = "mini-thumb";
+    img.loading = "lazy";
+    img.src = playlist.thumbnail;
+    img.alt = "";
+    img.dataset.squircle = "";
+    img.dataset.radius = "10";
+    ident.append(img);
+  }
+
+  const body = document.createElement("div");
+  body.className = "chan-row-body";
+  const name = document.createElement("div");
+  name.className = "chan-row-name chan-name";
+  name.textContent = playlist.title;
+  const meta = document.createElement("div");
+  meta.className = "card-sub dim";
+  meta.textContent = ["playlist", playlist.count ? `${playlist.count} videos` : ""]
+    .filter(Boolean)
+    .join(" · ");
+  body.append(name, meta);
+  ident.append(body);
+  ident.onclick = open;
+
+  row.append(ident, button("open", "ghost", open));
+  return row;
+}
+
+/** The non-video hits for the current search, above the grid. */
+function renderHits() {
+  const host = $("#hit-rows");
+  const rows = [
+    ...state.hits.channels.map(channelRow),
+    ...state.hits.playlists.map(playlistRow),
+  ];
+  host.replaceChildren(...rows);
+  host.classList.toggle("hidden", rows.length === 0);
+  squircleAll();
+}
+
+function clearHits() {
+  if (!state.hits.channels.length && !state.hits.playlists.length) return;
+  state.hits = { channels: [], playlists: [] };
+  renderHits();
 }
 
 async function subscribeChannel(channel, { stay = false } = {}) {
@@ -576,6 +649,29 @@ function miniFor(video, { removable = false } = {}) {
     }, { radius: 9 });
     el.append(x);
   }
+  return el;
+}
+
+/** A channel in the hero's live results. Same shape as a video mini so the list
+    reads as one list, but it opens the channel instead of a player. */
+function channelMini(channel) {
+  const el = document.createElement("div");
+  el.className = "mini";
+  el.dataset.squircle = "";
+  el.dataset.radius = "12";
+  el.dataset.edge = "";
+  const body = document.createElement("div");
+  body.className = "mini-body";
+  const t = document.createElement("div");
+  t.className = "mini-title chan-name";
+  t.textContent = channel.name;
+  const s = document.createElement("div");
+  s.className = "card-sub dim";
+  s.textContent = ["channel", followers(channel.followers)].filter(Boolean).join(" · ");
+  body.append(t, s);
+  el.append(avatarFor(channel, 52), body);
+  el.title = `browse ${channel.name}`;
+  el.onclick = () => openChannel(channel.id);
   return el;
 }
 
@@ -1103,7 +1199,11 @@ function render() {
     $("#empty").classList.toggle("hidden", visible.length > 0);
     const hidden = state.results.length - visible.length;
     if (!library) {
-      $("#status").textContent = `${visible.length} results${hidden ? ` · ${hidden} filtered out` : ""}`;
+      const chans = state.hits.channels.length;
+      $("#status").textContent =
+        `${visible.length} results` +
+        (hidden ? ` · ${hidden} filtered out` : "") +
+        (chans ? ` · ${chans} channel${chans === 1 ? "" : "s"}` : "");
     }
     if (library) paintLibraryBar();
     if (state.mode === "channel" && state.channelViewing) {
@@ -1181,6 +1281,8 @@ async function openLink(url) {
   $("#status").textContent = "opening…";
   try {
     const data = await runSearch(url);
+    // A channel link names a channel, not a video and not a list of videos.
+    if (data.kind === "channel" && data.channel_id) return openChannel(data.channel_id);
     const entries = data.results || [];
     if (!entries.length) throw new Error("nothing found at that link");
     if (data.kind === "playlist" && entries.length > 1) {
@@ -1216,6 +1318,7 @@ async function doSearch(query) {
   try {
     const data = await runSearch(query);
     state.results = data.results;
+    state.hits = { channels: data.channels || [], playlists: data.playlists || [] };
     state.lastQuery = query;
     $("#q").value = query;
     $("#browse-title").textContent = data.kind === "playlist" ? data.title : "results";
@@ -1223,7 +1326,10 @@ async function doSearch(query) {
     all.classList.toggle("hidden", data.results.length < 2);
     all.textContent = `get all ${data.results.length}`;
     all.onclick = () => enqueue(data.results.filter((v) => !store.isBlocked(v)));
-    $("#empty").textContent = "nothing matched, or everything was filtered out.";
+    $("#empty").textContent = state.hits.channels.length
+      ? "no videos matched — the channels above did."
+      : "nothing matched, or everything was filtered out.";
+    renderHits();
     render();
   } catch (err) {
     $("#status").textContent = String(err.message || err);
@@ -1387,10 +1493,16 @@ function wireHero() {
         const data = await runSearch(value);
         if (mine !== seq) return; // a newer keystroke already won
         const list = data.results.filter((v) => !store.isBlocked(v)).slice(0, 6);
+        // The channel you were looking for is usually the point of a search like
+        // "hololive", so it goes first rather than being dropped.
+        const chans = (data.channels || []).slice(0, 2);
         state.results = data.results;
         state.lastQuery = value;
         $("#hero-hint").textContent = `${data.results.length} results · enter for the full grid`;
-        $("#hero-results").replaceChildren(...list.map((v) => miniFor(v)));
+        $("#hero-results").replaceChildren(
+          ...chans.map(channelMini),
+          ...list.map((v) => miniFor(v)),
+        );
         squircleAll();
       } catch {
         $("#hero-hint").textContent = "search failed";

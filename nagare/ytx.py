@@ -32,6 +32,31 @@ _UA = (
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 
+VIDEO_ID = re.compile(r"[\w-]{11}")
+CHANNEL_ID = re.compile(r"UC[\w-]{22}")
+# /channel/UC..., /@handle, and the two legacy shapes. Matching the path is how a
+# channel is recognised when the id is missing or is a handle rather than a UC id.
+_CHANNEL_PATH = re.compile(r"youtube\.com/(?:channel/|@|c/|user/)")
+
+
+def kind_of(entry: dict) -> str:
+    """What a result entry actually is: a video, a channel or a playlist.
+
+    A YouTube results page mixes all three into one list and labels none of them,
+    so the id shape and the extractor key are the only things to go on. Getting
+    this wrong is how a channel ends up as a card that cannot be played and whose
+    "get" hands a channel url to the downloader.
+    """
+    ident = entry.get("id") or ""
+    url = entry.get("url") or entry.get("webpage_url") or ""
+    if CHANNEL_ID.fullmatch(ident) or _CHANNEL_PATH.search(url):
+        return "channel"
+    if VIDEO_ID.fullmatch(ident) and (entry.get("ie_key") or "Youtube") == "Youtube":
+        return "video"
+    if entry.get("_type") == "playlist" or "list=" in url:
+        return "playlist"
+    return "other"
+
 
 def _best_thumb(entry: dict) -> str:
     """Pick a reasonably sized thumbnail, preferring ~medium width."""
@@ -69,16 +94,73 @@ def normalise(entry: dict) -> dict:
     }
 
 
-def _search_sync(query: str, limit: int) -> list[dict]:
+def _split(entries: list) -> dict:
+    """Sort a result list into the three kinds of thing it can hold.
+
+    Only videos belong in the grid; the rest are handed to the frontend separately
+    so a channel can be opened as a channel instead of pretending to be a video.
+    """
+    videos: list[dict] = []
+    channels: list[dict] = []
+    playlists: list[dict] = []
+    seen: set[str] = set()
+    for entry in entries:
+        if not entry:
+            continue
+        kind = kind_of(entry)
+        if kind == "video":
+            videos.append(normalise(entry))
+        elif kind == "channel":
+            channel = normalise_channel(entry)
+            # A channel can match several times over (its own entry plus a tab);
+            # one row per channel is enough.
+            if CHANNEL_ID.fullmatch(channel["id"] or "") and channel["id"] not in seen:
+                seen.add(channel["id"])
+                channels.append(channel)
+        elif kind == "playlist":
+            playlist = normalise_playlist(entry)
+            if playlist["url"]:
+                playlists.append(playlist)
+    return {"videos": videos, "channels": channels, "playlists": playlists}
+
+
+def _search_sync(query: str, limit: int) -> dict:
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist"}
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-    entries = (info or {}).get("entries") or []
-    return [normalise(e) for e in entries if e]
+    return _split((info or {}).get("entries") or [])
+
+
+def _channel_probe_sync(url: str) -> dict | None:
+    """The channel behind a channel url, without expanding its tabs.
+
+    Resolving a bare channel url the normal way costs about 25 seconds: yt-dlp
+    walks Videos, Live and Shorts and lists every entry in each, all of which is
+    then thrown away because the channel page fetches its own uploads.
+    playlist_items="0" asks for the channel's metadata and nothing else.
+    """
+    opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlist_items": "0"}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False) or {}
+    channel_id = info.get("channel_id") or ""
+    if not CHANNEL_ID.fullmatch(channel_id):
+        return None
+    return {
+        "type": "channel",
+        "title": info.get("channel") or info.get("title") or "",
+        "channel_id": channel_id,
+        "entries": [],
+    }
 
 
 def _resolve_sync(url: str) -> dict:
-    """Resolve a URL to either a single video or a playlist of videos."""
+    """Resolve a URL to a single video, a channel, or a playlist of videos."""
+    if _CHANNEL_PATH.search(url):
+        channel = _channel_probe_sync(url)
+        if channel:
+            return channel
+        # Not a channel after all, or the probe came back empty: fall through and
+        # resolve it the long way.
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist"}
     recorder = auth.Recorder()
     with YoutubeDL({**opts, "logger": recorder}) as ydl:
@@ -90,11 +172,23 @@ def _resolve_sync(url: str) -> dict:
             raise ValueError(auth.recover("sign in to confirm you're not a bot"))
         raise ValueError("nothing found at that URL")
     if info.get("_type") == "playlist" or info.get("entries"):
-        entries = [normalise(e) for e in (info.get("entries") or []) if e]
+        channel_id = info.get("channel_id") or ""
+        # A channel url does not resolve to videos, it resolves to the channel's
+        # tabs (Videos, Live, Shorts). Hand back the channel itself so it opens as
+        # a channel page rather than as three unplayable "videos".
+        if CHANNEL_ID.fullmatch(channel_id) and (
+            _CHANNEL_PATH.search(url) or _CHANNEL_PATH.search(info.get("webpage_url") or "")
+        ):
+            return {
+                "type": "channel",
+                "title": info.get("channel") or info.get("title") or "",
+                "channel_id": channel_id,
+                "entries": [],
+            }
         return {
             "type": "playlist",
             "title": info.get("title") or "playlist",
-            "entries": entries,
+            "entries": _split(info.get("entries") or [])["videos"],
         }
     return {"type": "video", "title": info.get("title") or "", "entries": [normalise(info)]}
 
@@ -108,19 +202,11 @@ def _entries(info, limit: int) -> list:
     return raw[:limit]
 
 
-def _search_filtered_sync(url: str, limit: int) -> list[dict]:
+def _search_filtered_sync(url: str, limit: int) -> dict:
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
-    out = []
-    for e in _entries(info, limit):
-        if not e:
-            continue
-        normalised = normalise(e)
-        # A results page also yields channels and playlists; keep real videos.
-        if normalised["id"] and len(normalised["id"]) == 11:
-            out.append(normalised)
-    return out
+    return _split(_entries(info, limit))
 
 
 def _abs_url(url: str) -> str:
@@ -152,6 +238,22 @@ def normalise_channel(entry: dict) -> dict:
     }
 
 
+def normalise_playlist(entry: dict) -> dict:
+    ident = entry.get("id") or ""
+    url = entry.get("url") or entry.get("webpage_url") or ""
+    if not url and ident:
+        url = f"https://www.youtube.com/playlist?list={ident}"
+    # No uploader: for a playlist yt-dlp fills channel/uploader with the label of
+    # the link it scraped ("View full playlist"), which is not a name.
+    return {
+        "id": ident,
+        "title": entry.get("title") or "playlist",
+        "url": url,
+        "count": entry.get("playlist_count") or 0,
+        "thumbnail": _best_thumb(entry),
+    }
+
+
 def _search_channels_sync(url: str, limit: int) -> list[dict]:
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
     with YoutubeDL(opts) as ydl:
@@ -161,7 +263,7 @@ def _search_channels_sync(url: str, limit: int) -> list[dict]:
         if not e:
             continue
         channel = normalise_channel(e)
-        if re.fullmatch(r"UC[\w-]{22}", channel["id"] or ""):
+        if CHANNEL_ID.fullmatch(channel["id"] or ""):
             out.append(channel)
     return out
 
@@ -216,11 +318,12 @@ async def channel(channel_id: str, limit: int = 30) -> dict:
     return await asyncio.to_thread(_channel_sync, channel_id, limit)
 
 
-async def search(query: str, limit: int = 24) -> list[dict]:
+async def search(query: str, limit: int = 24) -> dict:
+    """{"videos": [...], "channels": [...], "playlists": [...]}"""
     return await asyncio.to_thread(_search_sync, query, limit)
 
 
-async def search_filtered(url: str, limit: int = 24) -> list[dict]:
+async def search_filtered(url: str, limit: int = 24) -> dict:
     return await asyncio.to_thread(_search_filtered_sync, url, limit)
 
 

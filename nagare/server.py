@@ -64,20 +64,33 @@ async def api_search(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse({"results": resolved["entries"], "kind": resolved["type"],
-                             "title": resolved["title"]})
+                             "title": resolved["title"],
+                             "channel_id": resolved.get("channel_id", ""),
+                             "channels": [], "playlists": []})
     try:
         filtered = sort != "relevance" or date != "any" or duration != "any"
         if filtered:
             # ytsearch: has no filter syntax, so go through a real results page
             # with the `sp` protobuf instead.
-            results = await ytx.search_filtered(
+            found = await ytx.search_filtered(
                 extras.search_url(q, sort, date, duration), min(max(limit, 1), 50)
             )
         else:
-            results = await ytx.search(q, min(max(limit, 1), 50))
+            found = await ytx.search(q, min(max(limit, 1), 50))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
-    return JSONResponse({"results": results, "kind": "search", "title": q})
+    # Videos are the grid; channels and playlists are rows above it. They are kept
+    # apart here because they are not interchangeable: a channel has no duration,
+    # nothing to play, and its id is not a video id.
+    return JSONResponse(
+        {
+            "results": found["videos"],
+            "channels": found["channels"],
+            "playlists": found["playlists"],
+            "kind": "search",
+            "title": q,
+        }
+    )
 
 
 @app.get("/api/auth/status")

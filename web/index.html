@@ -99,6 +99,11 @@
           <button class="btn primary" id="chan-bar-sub" data-squircle data-radius="12">subscribe</button>
         </div>
 
+        <!-- Search results that are not videos. A channel or a playlist has no
+             duration and nothing to play, so it gets a row that opens it rather
+             than a card in the grid pretending it is watchable. -->
+        <div id="hit-rows" class="hit-rows hidden"></div>
+
         <div id="grid" class="grid"></div>
         <div id="empty" class="empty dim"></div>
       </div>
