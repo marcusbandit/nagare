@@ -88,6 +88,14 @@ from the same package and both are needed.
 **`address already in use`** - something else holds 8737. Use
 `NAGARE_PORT=9000 uv run nagare`.
 
+**`ModuleNotFoundError: No module named 'nagare'` from `uv run nagare`** - macOS,
+when the checkout sits in an iCloud folder (`~/Documents`, `~/Desktop`). iCloud
+marks everything inside `.venv` hidden, python 3.14 skips hidden `.pth` files, and
+an editable install keeps its import path in exactly one of those. Either run
+`uv run python -m nagare`, which imports the checkout directly and does not care,
+or keep the environment out of iCloud:
+`UV_PROJECT_ENVIRONMENT=~/.cache/nagare-venv uv run nagare`.
+
 **A download fails or stalls at 0%** - usually a stale yt-dlp against a YouTube
 change. `uv lock --upgrade-package yt-dlp && uv run nagare`.
 
