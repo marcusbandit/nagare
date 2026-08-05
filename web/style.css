@@ -193,6 +193,22 @@ svg {
 .nav-arrows { display: flex; gap: 6px; flex: none; }
 .btn.caret { width: 42px; padding: 0; text-align: center; }
 
+/* What a search is looking for: all / videos / channels / playlists. */
+.seg { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.seg-btn {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  color: var(--gs-lit);
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  border: 0;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:hover { color: var(--gs-silver); --sq-border: var(--gs-edge); }
+.seg-btn.on { color: var(--gs-phosphor); background: var(--gs-dark); --sq-border: var(--gs-verdigris); }
+
 /* ------------------------------------------------------------------- views */
 
 .view { padding: var(--gap); }

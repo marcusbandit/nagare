@@ -128,6 +128,7 @@ function setMode(mode) {
   $("#lib-bar").classList.toggle("hidden", mode !== "library");
   $("#subs-bar").classList.toggle("hidden", mode !== "feed");
   $("#chan-bar").classList.toggle("hidden", mode !== "channel");
+  $("#search-only").classList.toggle("hidden", mode !== "results");
   // Channel and playlist hits belong to one search. Leaving the results, or
   // starting another search, drops them.
   clearHits();
@@ -147,6 +148,8 @@ function sameLocation(a, b) {
   if (!a || a.kind !== b.kind) return false;
   switch (a.kind) {
     case "results":
+      // The same words looked at through a different chip are a different place.
+      return a.query === b.query && a.only === b.only;
     case "playlist":
       return a.query === b.query;
     case "channel":
@@ -435,7 +438,11 @@ function playlistRow(playlist) {
   name.textContent = playlist.title;
   const meta = document.createElement("div");
   meta.className = "card-sub dim";
-  meta.textContent = ["playlist", playlist.count ? `${playlist.count} videos` : ""]
+  meta.textContent = [
+    "playlist",
+    playlist.count ? `${playlist.count} videos` : "",
+    playlist.uploader,
+  ]
     .filter(Boolean)
     .join(" · ");
   body.append(name, meta);
@@ -757,6 +764,41 @@ function channelMini(channel) {
   el.append(avatarFor(channel, 52), body);
   el.title = `browse ${channel.name}`;
   el.onclick = () => openChannel(channel.id);
+  return el;
+}
+
+/** A playlist in the hero's live results. Opens the list, same as its row. */
+function playlistMini(playlist) {
+  const el = document.createElement("div");
+  el.className = "mini";
+  el.dataset.squircle = "";
+  el.dataset.radius = "12";
+  el.dataset.edge = "";
+  if (playlist.thumbnail) {
+    const img = document.createElement("img");
+    img.className = "mini-thumb";
+    img.loading = "lazy";
+    img.src = playlist.thumbnail;
+    img.alt = "";
+    el.append(img);
+  }
+  const body = document.createElement("div");
+  body.className = "mini-body";
+  const t = document.createElement("div");
+  t.className = "mini-title";
+  t.textContent = playlist.title;
+  const s = document.createElement("div");
+  s.className = "card-sub dim";
+  s.textContent = [
+    "playlist",
+    playlist.count ? `${playlist.count} videos` : "",
+    playlist.uploader,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  body.append(t, s);
+  el.append(body);
+  el.onclick = () => openLink(playlist.url);
   return el;
 }
 
@@ -1282,14 +1324,20 @@ function render() {
     const library = state.mode === "library";
     const visible = library ? state.results : state.results.filter((v) => !store.isBlocked(v));
     $("#grid").replaceChildren(...visible.map((v) => cardFor(v, { library })));
-    $("#empty").classList.toggle("hidden", visible.length > 0);
+    const chans = state.hits.channels.length;
+    const lists = state.hits.playlists.length;
+    // A channel-only search fills the page with rows and no cards, so "nothing
+    // here" has to mean nothing at all, not merely no videos.
+    $("#empty").classList.toggle("hidden", visible.length + chans + lists > 0);
     const hidden = state.results.length - visible.length;
     if (!library) {
-      const chans = state.hits.channels.length;
-      $("#status").textContent =
-        `${visible.length} results` +
-        (hidden ? ` · ${hidden} filtered out` : "") +
-        (chans ? ` · ${chans} channel${chans === 1 ? "" : "s"}` : "");
+      const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+      const bits = [];
+      if (visible.length) bits.push(plural(visible.length, "video"));
+      if (chans) bits.push(plural(chans, "channel"));
+      if (lists) bits.push(plural(lists, "playlist"));
+      if (hidden) bits.push(`${hidden} filtered out`);
+      $("#status").textContent = bits.join(" · ");
     }
     if (library) paintLibraryBar();
     if (state.mode === "channel" && state.channelViewing) {
@@ -1345,13 +1393,16 @@ async function enqueue(videos) {
   render();
 }
 
-async function runSearch(query, { into = "results" } = {}) {
+async function runSearch(query, { only } = {}) {
   const s = store.getSettings();
   const params = new URLSearchParams({
     q: query,
     sort: s.sort,
     date: s.uploadDate,
     duration: s.videoDuration,
+    // Passed explicitly, not read here, so a chip clicked mid-flight cannot make
+    // a result set and the choice it was fetched under disagree.
+    only: only ?? s.searchOnly,
   });
   const res = await fetch(`/api/search?${params}`);
   const data = await res.json();
@@ -1400,14 +1451,16 @@ async function openLink(url, { push = true } = {}) {
 
 async function doSearch(query, { push = true } = {}) {
   if (looksLikeUrl(query)) return openLink(query, { push });
+  const only = store.getSettings().searchOnly;
   $("#status").textContent = "searching…";
   show("browse");
   setMode("results");
   try {
-    const data = await runSearch(query);
+    const data = await runSearch(query, { only });
     const loc = {
       kind: "results",
       query,
+      only,
       title: data.kind === "playlist" ? data.title : "results",
       results: data.results,
       hits: { channels: data.channels || [], playlists: data.playlists || [] },
@@ -1419,6 +1472,40 @@ async function doSearch(query, { push = true } = {}) {
   }
 }
 
+// What a search may be narrowed to. "all" is the mixed list; the others pin the
+// kind at YouTube's end, so looking for a channel is its own search rather than
+// a filter over results that mostly are not channels.
+const SEARCH_KINDS = ["all", "videos", "channels", "playlists"];
+
+const NOTHING_FOUND = {
+  all: "nothing matched, or everything was filtered out.",
+  videos: "no videos matched, or everything was filtered out.",
+  channels: "no channels matched.",
+  playlists: "no playlists matched.",
+};
+
+function renderSearchOnly() {
+  const current = store.getSettings().searchOnly;
+  $("#search-only").replaceChildren(
+    ...SEARCH_KINDS.map((value) => {
+      const chip = document.createElement("button");
+      chip.className = `seg-btn${value === current ? " on" : ""}`;
+      chip.dataset.squircle = "";
+      chip.dataset.radius = "9";
+      chip.dataset.edge = "";
+      chip.textContent = value;
+      chip.onclick = () => {
+        if (store.getSettings().searchOnly === value) return;
+        store.setSetting("searchOnly", value);
+        renderSearchOnly();
+        if (state.lastQuery && !looksLikeUrl(state.lastQuery)) doSearch(state.lastQuery);
+      };
+      return chip;
+    }),
+  );
+  squircleAll();
+}
+
 /** Paint a grid of results, whether they just arrived or came back off the
     trail. Everything the view needs lives on the location. */
 function paintResults(loc) {
@@ -1427,13 +1514,17 @@ function paintResults(loc) {
   state.lastQuery = loc.query;
   $("#q").value = loc.query;
   $("#browse-title").textContent = loc.title;
+  // Coming back to a search restores what it was looking for, so the chips never
+  // describe a result set other than the one on screen.
+  if (loc.only && loc.only !== store.getSettings().searchOnly) {
+    store.setSetting("searchOnly", loc.only);
+  }
+  renderSearchOnly();
   const all = $("#grab-all");
   all.classList.toggle("hidden", loc.results.length < 2);
   all.textContent = `get all ${loc.results.length}`;
   all.onclick = () => enqueue(loc.results.filter((v) => !store.isBlocked(v)));
-  $("#empty").textContent = state.hits.channels.length
-    ? "no videos matched — the channels above did."
-    : "nothing matched, or everything was filtered out.";
+  $("#empty").textContent = NOTHING_FOUND[loc.only || "all"];
   renderHits();
   render();
 }
@@ -1597,13 +1688,18 @@ function wireHero() {
         if (mine !== seq) return; // a newer keystroke already won
         const list = data.results.filter((v) => !store.isBlocked(v)).slice(0, 6);
         // The channel you were looking for is usually the point of a search like
-        // "hololive", so it goes first rather than being dropped.
-        const chans = (data.channels || []).slice(0, 2);
+        // "hololive", so it goes first rather than being dropped. With no videos
+        // to show — a channel-only search — the channels take the whole list.
+        const room = list.length ? 2 : 6;
+        const chans = (data.channels || []).slice(0, room);
+        const lists = (data.playlists || []).slice(0, list.length || chans.length ? 0 : 6);
         state.results = data.results;
         state.lastQuery = value;
-        $("#hero-hint").textContent = `${data.results.length} results · enter for the full grid`;
+        const found = data.results.length + (data.channels || []).length + lists.length;
+        $("#hero-hint").textContent = `${found} results · enter for the full grid`;
         $("#hero-results").replaceChildren(
           ...chans.map(channelMini),
+          ...lists.map(playlistMini),
           ...list.map((v) => miniFor(v)),
         );
         squircleAll();
@@ -1742,6 +1838,7 @@ async function init() {
 
   wireHero();
   wireFilters();
+  renderSearchOnly();
   loadChannels();
   connectEvents();
   setMode("hero");
