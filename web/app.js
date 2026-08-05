@@ -16,6 +16,8 @@ const state = {
   watching: null,
   playlist: [], // queued-to-play videos
   autoNextTimer: 0,
+  channels: [], // subscriptions
+  feedChannel: "", // "" = everyone
 };
 
 let player = null;
@@ -119,7 +121,134 @@ function setMode(mode) {
   $("#browse-body").classList.toggle("hidden", mode === "hero");
   $("#bar").classList.toggle("bar-quiet", mode === "hero");
   $("#lib-bar").classList.toggle("hidden", mode !== "library");
+  $("#subs-bar").classList.toggle("hidden", mode !== "feed");
   squircleAll();
+}
+
+// -------------------------------------------------------------- subscriptions
+
+async function loadChannels() {
+  try {
+    const data = await (await fetch("/api/subscriptions")).json();
+    state.channels = data.channels || [];
+  } catch {
+    state.channels = [];
+  }
+  paintWatchActions();
+}
+
+const isSubscribed = (channelId) => state.channels.some((c) => c.id === channelId);
+
+async function subscribe(target) {
+  try {
+    const res = await fetch("/api/subscriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "could not subscribe");
+    state.channels = data.channels;
+    // YouTube fuzzy-matches unknown handles, so say which channel actually
+    // got added rather than assuming it was the one that was typed.
+    toast(`subscribed to ${data.channel.name}`, { kind: "ok" });
+    renderSubChips();
+    paintWatchActions();
+    return true;
+  } catch (err) {
+    toast(String(err.message || err), { kind: "err", timeout: 6000 });
+    return false;
+  }
+}
+
+async function unsubscribe(channel) {
+  const ok = await confirmDialog({
+    title: `Unsubscribe from ${channel.name}?`,
+    body: "Their uploads stop appearing in your feed. Nothing downloaded is removed.",
+    confirmLabel: "unsubscribe",
+    danger: true,
+  });
+  if (!ok) return;
+  const res = await fetch(`/api/subscriptions/${channel.id}`, { method: "DELETE" });
+  if (res.ok) {
+    state.channels = (await res.json()).channels;
+    renderSubChips();
+    paintWatchActions();
+    if (state.mode === "feed") showFeed();
+  }
+}
+
+function renderSubChips() {
+  const host = $("#chip-subs");
+  const chips = [];
+
+  const all = document.createElement("span");
+  all.className = `chip pick${state.feedChannel ? "" : " on"}`;
+  all.dataset.squircle = "";
+  all.dataset.radius = "9";
+  all.dataset.edge = "";
+  all.textContent = `everyone (${state.channels.length})`;
+  all.onclick = () => {
+    state.feedChannel = "";
+    showFeed();
+  };
+  chips.push(all);
+
+  for (const c of state.channels) {
+    const chip = document.createElement("span");
+    chip.className = `chip pick${state.feedChannel === c.id ? " on" : ""}`;
+    chip.dataset.squircle = "";
+    chip.dataset.radius = "9";
+    chip.dataset.edge = "";
+    const label = document.createElement("span");
+    label.textContent = c.name;
+    label.onclick = () => {
+      state.feedChannel = state.feedChannel === c.id ? "" : c.id;
+      showFeed();
+    };
+    const x = document.createElement("button");
+    x.textContent = "×";
+    x.title = `unsubscribe from ${c.name}`;
+    x.onclick = (e) => {
+      e.stopPropagation();
+      unsubscribe(c);
+    };
+    chip.append(label, x);
+    chips.push(chip);
+  }
+
+  host.replaceChildren(...chips);
+  squircleAll();
+}
+
+async function showFeed() {
+  show("browse");
+  setMode("feed");
+  $("#browse-title").textContent = "subscriptions";
+  $("#grab-all").classList.add("hidden");
+  await loadChannels();
+  renderSubChips();
+
+  if (!state.channels.length) {
+    state.results = [];
+    $("#empty").textContent = "no subscriptions yet. add a channel above.";
+    $("#status").textContent = "";
+    render();
+    return;
+  }
+
+  $("#status").textContent = "loading feed…";
+  try {
+    const params = new URLSearchParams({ limit: "60" });
+    if (state.feedChannel) params.set("channel", state.feedChannel);
+    const data = await (await fetch(`/api/feed?${params}`)).json();
+    state.results = data.videos || [];
+    state.channels = data.channels || state.channels;
+    $("#empty").textContent = "nothing new from these channels.";
+    render();
+  } catch (err) {
+    $("#status").textContent = `feed failed: ${err.message || err}`;
+  }
 }
 
 // ---------------------------------------------------------------------- cards
@@ -376,6 +505,25 @@ function paintWatchActions() {
   const mpv = $("#w-mpv");
   mpv.classList.toggle("hidden", !state.hasMpv || !job || (!job.watchable && job.state !== "done"));
   mpv.onclick = () => fetch(`/api/jobs/${v.id}/mpv`, { method: "POST" });
+
+  // Subscribe straight from what you are watching. The feed entries carry a
+  // channel_id; search results sometimes do not, so fall back to the video URL
+  // and let the server work the channel out.
+  const subBtn = $("#w-sub");
+  const channelId = v.channel_id || "";
+  if (channelId && isSubscribed(channelId)) {
+    subBtn.textContent = "subscribed";
+    subBtn.onclick = () => unsubscribe(state.channels.find((c) => c.id === channelId));
+  } else {
+    subBtn.textContent = "subscribe";
+    subBtn.onclick = async () => {
+      subBtn.disabled = true;
+      subBtn.textContent = "…";
+      await subscribe(channelId || v.url);
+      subBtn.disabled = false;
+      paintWatchActions();
+    };
+  }
 
   $("#w-queue").onclick = () => {
     if (state.playlist.some((x) => x.id === v.id)) {
@@ -961,7 +1109,19 @@ async function init() {
     $("#hero-results").replaceChildren();
     $("#hero-q").focus();
   };
+  $("#tab-subs").onclick = () => {
+    state.feedChannel = "";
+    showFeed();
+  };
   $("#tab-library").onclick = showLibrary;
+  $("#add-sub").onsubmit = async (e) => {
+    e.preventDefault();
+    const input = $("#sub-input");
+    const value = input.value.trim();
+    if (!value) return;
+    input.value = "";
+    if (await subscribe(value)) showFeed();
+  };
   $("#tab-queue").onclick = () => openDrawer("#drawer");
   $("#tab-filters").onclick = () => openDrawer("#filters");
   $("#drawer-close").onclick = closeDrawers;
@@ -1006,6 +1166,7 @@ async function init() {
 
   wireHero();
   wireFilters();
+  loadChannels();
   connectEvents();
   setMode("hero");
   renderPlaylist();

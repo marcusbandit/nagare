@@ -24,6 +24,7 @@
       <div class="field tight" data-squircle data-radius="12" data-edge>
         <select id="quality" title="download quality"></select>
       </div>
+      <button class="btn ghost" id="tab-subs" data-squircle data-radius="12">subs</button>
       <button class="btn ghost" id="tab-library" data-squircle data-radius="12">library</button>
       <button class="btn ghost" id="tab-filters" data-squircle data-radius="12">filters</button>
       <button class="btn ghost" id="tab-queue" data-squircle data-radius="12">
@@ -64,6 +65,17 @@
           <button class="btn ghost" id="lib-sweep" data-squircle data-radius="12">
             delete watched
           </button>
+        </div>
+
+        <!-- Subscriptions only: who you follow, and a box to follow someone new. -->
+        <div id="subs-bar" class="subs-bar hidden" data-squircle data-radius="14" data-edge>
+          <div class="chips" id="chip-subs"></div>
+          <form class="chip-add" id="add-sub">
+            <div class="field tight" data-squircle data-radius="10" data-edge>
+              <input id="sub-input" placeholder="@handle, channel url, or a video url" spellcheck="false" />
+            </div>
+            <button class="btn ghost" type="submit" data-squircle data-radius="10">subscribe</button>
+          </form>
         </div>
 
         <div id="grid" class="grid"></div>
@@ -151,6 +163,7 @@
             <span class="dim" id="w-sub"></span>
             <span id="w-votes" class="votes dim"></span>
             <span class="spacer"></span>
+            <button class="btn ghost" id="w-sub" data-squircle data-radius="12">subscribe</button>
             <button class="btn ghost" id="w-queue" data-squircle data-radius="12">+ queue</button>
             <button class="btn ghost" id="w-mpv" data-squircle data-radius="12">mpv</button>
             <button class="btn primary" id="w-get" data-squircle data-radius="12">download</button>

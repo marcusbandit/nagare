@@ -56,6 +56,7 @@ def normalise(entry: dict) -> dict:
         "url": url,
         "title": entry.get("title") or "(untitled)",
         "uploader": entry.get("uploader") or entry.get("channel") or "",
+        "channel_id": entry.get("channel_id") or "",
         "duration": entry.get("duration") or 0,
         "thumbnail": _best_thumb(entry),
         "view_count": entry.get("view_count") or 0,

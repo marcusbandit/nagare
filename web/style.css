@@ -874,3 +874,27 @@ svg {
 
 /* The queue drawer's mini rows need room for their remove button. */
 .mini .btn.tiny { align-self: center; flex: none; }
+
+/* ======================================================== subscriptions ===== */
+
+.subs-bar {
+  background: var(--gs-dark);
+  --sq-border: var(--gs-brushed);
+  padding: 14px 16px;
+  margin-bottom: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.subs-bar .chip-add { margin-top: 0; max-width: 560px; }
+
+/* A chip you can pick, as opposed to a blocked-word chip you can only remove. */
+.chip.pick { cursor: pointer; }
+.chip.pick:hover { --sq-border: var(--gs-edge); color: var(--gs-chrome); }
+.chip.pick.on {
+  --sq-border: var(--gs-verdigris);
+  color: var(--gs-phosphor);
+  background: var(--gs-body);
+}
+.chip.pick > span { cursor: pointer; }

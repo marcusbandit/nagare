@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, extras, ytx
+from . import config, extras, subs, ytx
 from .jobs import manager
 
 config.ensure_dirs()
@@ -80,6 +80,38 @@ async def api_search(
 @app.get("/api/votes/{video_id}")
 async def api_votes(video_id: str) -> JSONResponse:
     return JSONResponse(await extras.votes(video_id))
+
+
+# ------------------------------------------------------------- subscriptions
+
+
+@app.get("/api/subscriptions")
+async def api_subs() -> JSONResponse:
+    return JSONResponse({"channels": subs.load()})
+
+
+@app.post("/api/subscriptions")
+async def api_subscribe(payload: dict) -> JSONResponse:
+    target = (payload.get("target") or "").strip()
+    if not target:
+        raise HTTPException(400, "give a channel url, @handle or a video url")
+    try:
+        record = await subs.add(target)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, str(exc)) from exc
+    return JSONResponse({"channel": record, "channels": subs.load()})
+
+
+@app.delete("/api/subscriptions/{channel_id}")
+async def api_unsubscribe(channel_id: str) -> JSONResponse:
+    if not subs.remove(channel_id):
+        raise HTTPException(404, "not subscribed")
+    return JSONResponse({"channels": subs.load()})
+
+
+@app.get("/api/feed")
+async def api_feed(limit: int = 60, channel: str = "") -> JSONResponse:
+    return JSONResponse(await subs.feed(min(max(limit, 1), 200), channel))
 
 
 @app.post("/api/download")
