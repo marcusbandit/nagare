@@ -156,3 +156,9 @@ exponentially smoothed progress bars.
   other players may not.
 - `mpv` buttons play the growing HLS playlist directly, so the same
   watch-while-downloading works outside the browser.
+
+## License
+
+MIT, see [LICENSE](LICENSE). nagare drives [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+(Unlicense) and [ffmpeg](https://ffmpeg.org) (LGPL/GPL depending on build), neither
+of which is bundled here; you install them yourself.

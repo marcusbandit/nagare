@@ -2,6 +2,8 @@
 name = "nagare"
 version = "0.1.0"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.1",
