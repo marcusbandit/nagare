@@ -187,6 +187,11 @@ svg {
 .btn.tiny { height: 32px; padding: 0 10px; }
 .btn.danger:hover { background: var(--gs-red); color: var(--gs-void); }
 .btn:disabled { color: var(--gs-edge); cursor: default; background: var(--gs-dark); }
+.btn:disabled:hover { background: var(--gs-dark); color: var(--gs-edge); }
+
+/* Back and forward. Square, so the two of them read as one control. */
+.nav-arrows { display: flex; gap: 6px; flex: none; }
+.btn.caret { width: 42px; padding: 0; text-align: center; }
 
 /* ------------------------------------------------------------------- views */
 

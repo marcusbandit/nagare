@@ -134,6 +134,85 @@ function setMode(mode) {
   squircleAll();
 }
 
+// ------------------------------------------------------------------- history
+// Where you have been, walked by the two carets in the bar. A location carries
+// its own payload, so going back to a search repaints it instead of asking
+// YouTube for it again; only the player and the feed have to be re-established.
+
+const trail = { stack: [], index: -1, limit: 60 };
+
+/** Two locations are the same place when their identity matches, so repainting
+    the feed after unsubscribing does not count as having gone somewhere. */
+function sameLocation(a, b) {
+  if (!a || a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case "results":
+    case "playlist":
+      return a.query === b.query;
+    case "channel":
+      return a.id === b.id;
+    case "feed":
+      return a.channel === b.channel;
+    case "watch":
+      return a.video?.id === b.video?.id;
+    default:
+      return true;
+  }
+}
+
+function pushLocation(loc) {
+  if (sameLocation(trail.stack[trail.index], loc)) {
+    trail.stack[trail.index] = loc; // same place, fresher payload
+  } else {
+    // Going somewhere new from the middle of the trail drops what was ahead,
+    // which is what every browser does and what people expect.
+    trail.stack.splice(trail.index + 1);
+    trail.stack.push(loc);
+    if (trail.stack.length > trail.limit) trail.stack.shift();
+    trail.index = trail.stack.length - 1;
+  }
+  paintNav();
+}
+
+function paintNav() {
+  $("#nav-back").disabled = trail.index <= 0;
+  $("#nav-fwd").disabled = trail.index >= trail.stack.length - 1;
+}
+
+async function goTo(delta) {
+  const target = trail.index + delta;
+  if (target < 0 || target >= trail.stack.length) return;
+  trail.index = target;
+  paintNav();
+  await applyLocation(trail.stack[target]);
+}
+
+/** Put a location back on screen. Nothing here may push: walking the trail is
+    not travelling. */
+async function applyLocation(loc) {
+  switch (loc.kind) {
+    case "watch":
+      return openWatch(loc.video, { push: false });
+    case "channel":
+      show("browse");
+      setMode("channel");
+      return paintChannel(loc.data);
+    case "results":
+    case "playlist":
+      show("browse");
+      setMode("results");
+      return paintResults(loc);
+    case "feed":
+      state.feedChannel = loc.channel;
+      return showFeed({ push: false });
+    case "library":
+      return showLibrary({ push: false });
+    default:
+      show("browse");
+      return setMode("hero");
+  }
+}
+
 // -------------------------------------------------------------- subscriptions
 
 async function loadChannels() {
@@ -434,7 +513,7 @@ async function findChannels(query) {
 }
 
 /** A channel's own page: header plus its recent uploads. */
-async function openChannel(channelId) {
+async function openChannel(channelId, { push = true } = {}) {
   show("browse");
   setMode("channel");
   $("#browse-title").textContent = "channel";
@@ -446,30 +525,35 @@ async function openChannel(channelId) {
   try {
     const data = await (await fetch(`/api/channel/${channelId}?limit=40`)).json();
     if (!data.channel) throw new Error("channel not found");
-    const c = data.channel;
-    state.channelViewing = c;
-    state.results = data.videos || [];
-
-    $("#chan-bar-name").textContent = c.name;
-    $("#chan-bar-meta").textContent = [followers(c.followers), `${state.results.length} recent`]
-      .filter(Boolean)
-      .join("  ·  ");
-    $("#chan-bar-desc").textContent = c.description || "";
-    const av = $("#chan-bar-avatar");
-    const local = state.channels.find((s) => s.id === c.id);
-    av.src = local?.avatar_file ? `/thumbs/${local.avatar_file}` : c.avatar || "";
-    av.dataset.squircle = "";
-    av.dataset.radius = "26";
-    av.classList.toggle("hidden", !av.src);
-
-    paintChannelSubButton(c);
-    $("#browse-title").textContent = c.name;
-    $("#status").textContent = "";
-    $("#empty").textContent = "no uploads found.";
-    render();
+    paintChannel(data);
+    if (push) pushLocation({ kind: "channel", id: channelId, data });
   } catch (err) {
     $("#status").textContent = `channel failed: ${err.message || err}`;
   }
+}
+
+function paintChannel(data) {
+  const c = data.channel;
+  state.channelViewing = c;
+  state.results = data.videos || [];
+
+  $("#chan-bar-name").textContent = c.name;
+  $("#chan-bar-meta").textContent = [followers(c.followers), `${state.results.length} recent`]
+    .filter(Boolean)
+    .join("  ·  ");
+  $("#chan-bar-desc").textContent = c.description || "";
+  const av = $("#chan-bar-avatar");
+  const local = state.channels.find((s) => s.id === c.id);
+  av.src = local?.avatar_file ? `/thumbs/${local.avatar_file}` : c.avatar || "";
+  av.dataset.squircle = "";
+  av.dataset.radius = "26";
+  av.classList.toggle("hidden", !av.src);
+
+  paintChannelSubButton(c);
+  $("#browse-title").textContent = c.name;
+  $("#status").textContent = "";
+  $("#empty").textContent = "no uploads found.";
+  render();
 }
 
 function paintChannelSubButton(channel) {
@@ -484,9 +568,10 @@ function paintChannelSubButton(channel) {
   };
 }
 
-async function showFeed() {
+async function showFeed({ push = true } = {}) {
   show("browse");
   setMode("feed");
+  if (push) pushLocation({ kind: "feed", channel: state.feedChannel });
   $("#browse-title").textContent = "subscriptions";
   $("#grab-all").classList.add("hidden");
   await loadChannels();
@@ -732,10 +817,11 @@ async function offerDeleteOnFinish(job) {
 
 // ---------------------------------------------------------------------- watch
 
-async function openWatch(video) {
+async function openWatch(video, { push = true } = {}) {
   cancelAutoNext();
   state.watching = video;
   show("watch");
+  if (push) pushLocation({ kind: "watch", video });
 
   paintWatchMeta(video);
   paintWatchActions();
@@ -1277,29 +1363,31 @@ const looksLikeUrl = (s) => /^(https?:\/\/|www\.)/i.test(s.trim());
 
 /** A pasted link names one thing. Go straight to it rather than showing a
     one-item "search result" grid; only a playlist is worth listing. */
-async function openLink(url) {
+async function openLink(url, { push = true } = {}) {
   $("#status").textContent = "opening…";
   try {
     const data = await runSearch(url);
     // A channel link names a channel, not a video and not a list of videos.
-    if (data.kind === "channel" && data.channel_id) return openChannel(data.channel_id);
+    if (data.kind === "channel" && data.channel_id) {
+      return openChannel(data.channel_id, { push });
+    }
     const entries = data.results || [];
     if (!entries.length) throw new Error("nothing found at that link");
     if (data.kind === "playlist" && entries.length > 1) {
       show("browse");
       setMode("results");
-      state.results = entries;
-      state.lastQuery = url;
-      $("#browse-title").textContent = data.title || "playlist";
-      const all = $("#grab-all");
-      all.classList.remove("hidden");
-      all.textContent = `get all ${entries.length}`;
-      all.onclick = () => enqueue(entries.filter((v) => !store.isBlocked(v)));
-      render();
+      const loc = {
+        kind: "playlist",
+        query: url,
+        title: data.title || "playlist",
+        results: entries,
+      };
+      paintResults(loc);
+      if (push) pushLocation(loc);
       return;
     }
     state.results = entries;
-    openWatch(entries[0]);
+    openWatch(entries[0], { push });
   } catch (err) {
     show("browse");
     setMode("results");
@@ -1310,35 +1398,50 @@ async function openLink(url) {
   }
 }
 
-async function doSearch(query) {
-  if (looksLikeUrl(query)) return openLink(query);
+async function doSearch(query, { push = true } = {}) {
+  if (looksLikeUrl(query)) return openLink(query, { push });
   $("#status").textContent = "searching…";
   show("browse");
   setMode("results");
   try {
     const data = await runSearch(query);
-    state.results = data.results;
-    state.hits = { channels: data.channels || [], playlists: data.playlists || [] };
-    state.lastQuery = query;
-    $("#q").value = query;
-    $("#browse-title").textContent = data.kind === "playlist" ? data.title : "results";
-    const all = $("#grab-all");
-    all.classList.toggle("hidden", data.results.length < 2);
-    all.textContent = `get all ${data.results.length}`;
-    all.onclick = () => enqueue(data.results.filter((v) => !store.isBlocked(v)));
-    $("#empty").textContent = state.hits.channels.length
-      ? "no videos matched — the channels above did."
-      : "nothing matched, or everything was filtered out.";
-    renderHits();
-    render();
+    const loc = {
+      kind: "results",
+      query,
+      title: data.kind === "playlist" ? data.title : "results",
+      results: data.results,
+      hits: { channels: data.channels || [], playlists: data.playlists || [] },
+    };
+    paintResults(loc);
+    if (push) pushLocation(loc);
   } catch (err) {
     $("#status").textContent = String(err.message || err);
   }
 }
 
-function showLibrary() {
+/** Paint a grid of results, whether they just arrived or came back off the
+    trail. Everything the view needs lives on the location. */
+function paintResults(loc) {
+  state.results = loc.results;
+  state.hits = loc.hits || { channels: [], playlists: [] };
+  state.lastQuery = loc.query;
+  $("#q").value = loc.query;
+  $("#browse-title").textContent = loc.title;
+  const all = $("#grab-all");
+  all.classList.toggle("hidden", loc.results.length < 2);
+  all.textContent = `get all ${loc.results.length}`;
+  all.onclick = () => enqueue(loc.results.filter((v) => !store.isBlocked(v)));
+  $("#empty").textContent = state.hits.channels.length
+    ? "no videos matched — the channels above did."
+    : "nothing matched, or everything was filtered out.";
+  renderHits();
+  render();
+}
+
+function showLibrary({ push = true } = {}) {
   show("browse");
   setMode("library");
+  if (push) pushLocation({ kind: "library" });
   state.results = [...state.jobs.values()]
     .filter((j) => j.state === "done")
     .sort((a, b) => {
@@ -1564,12 +1667,15 @@ async function init() {
     $("#hero-q").value = "";
     $("#hero-results").replaceChildren();
     $("#hero-q").focus();
+    pushLocation({ kind: "hero" });
   };
+  $("#nav-back").onclick = () => goTo(-1);
+  $("#nav-fwd").onclick = () => goTo(1);
   $("#tab-subs").onclick = () => {
     state.feedChannel = "";
     showFeed();
   };
-  $("#tab-library").onclick = showLibrary;
+  $("#tab-library").onclick = () => showLibrary();
   $("#add-sub").onsubmit = async (e) => {
     e.preventDefault();
     const input = $("#sub-input");
@@ -1617,8 +1723,15 @@ async function init() {
       if (!$("#drawer").classList.contains("hidden") || !$("#filters").classList.contains("hidden")) {
         closeDrawers();
       } else if (state.view === "watch") {
-        show("browse");
+        // Leaving a video is going back, when there is somewhere to go back to.
+        if (trail.index > 0) goTo(-1);
+        else show("browse");
       }
+    }
+    // The browser's own back/forward chord, for the same two moves.
+    if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      goTo(e.key === "ArrowLeft" ? -1 : 1);
     }
     // "/" focuses search from anywhere, like every other browser-ish thing.
     if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
@@ -1632,6 +1745,9 @@ async function init() {
   loadChannels();
   connectEvents();
   setMode("hero");
+  // The hero is where you start, so it is the first thing on the trail and back
+  // is dead until you leave it.
+  pushLocation({ kind: "hero" });
   renderPlaylist();
   squircleAll();
   render();
