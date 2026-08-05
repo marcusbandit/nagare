@@ -24,7 +24,7 @@ from typing import Any
 
 from yt_dlp import YoutubeDL
 
-from . import config
+from . import config, ytx
 
 RSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
 
@@ -95,24 +95,65 @@ def _resolve_channel_sync(target: str) -> dict:
     if not re.fullmatch(r"UC[\w-]{22}", channel_id or ""):
         raise ValueError("could not find a channel there")
 
-    avatar = ""
-    for thumb in info.get("thumbnails") or []:
-        if thumb.get("url"):
-            avatar = thumb["url"]
-            break
-
     return {
         "id": channel_id,
         "name": (name or channel_id).strip(),
         "url": f"https://www.youtube.com/channel/{channel_id}",
-        "avatar": avatar,
+        "avatar": ytx.pick_avatar(info),
+        "followers": info.get("channel_follower_count") or 0,
         "added": time.time(),
     }
+
+
+def cache_avatar_sync(channel_id: str, url: str) -> str:
+    """Keep a local copy so the subscriptions page paints instantly and offline."""
+    if not url or not channel_id:
+        return ""
+    dest = config.THUMBS / f"ch_{channel_id}.jpg"
+    if dest.exists() and dest.stat().st_size > 0:
+        return dest.name
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read()
+        if data:
+            dest.write_bytes(data)
+            return dest.name
+    except Exception:
+        return ""
+    return ""
 
 
 async def add(target: str) -> dict:
     subs = load()
     record = await asyncio.to_thread(_resolve_channel_sync, target)
+    record["avatar_file"] = await asyncio.to_thread(
+        cache_avatar_sync, record["id"], record.get("avatar", "")
+    )
+    if any(s["id"] == record["id"] for s in subs):
+        return record
+    subs.append(record)
+    subs.sort(key=lambda s: s["name"].lower())
+    save(subs)
+    _feed_cache.pop(record["id"], None)
+    return record
+
+
+async def add_channel(channel: dict) -> dict:
+    """Subscribe from an already-resolved channel (a search result), so picking
+    one out of a list costs no extra round trip to YouTube."""
+    subs = load()
+    record = {
+        "id": channel["id"],
+        "name": channel.get("name") or channel["id"],
+        "url": channel.get("url") or f"https://www.youtube.com/channel/{channel['id']}",
+        "avatar": channel.get("avatar", ""),
+        "followers": channel.get("followers", 0),
+        "added": time.time(),
+    }
+    record["avatar_file"] = await asyncio.to_thread(
+        cache_avatar_sync, record["id"], record["avatar"]
+    )
     if any(s["id"] == record["id"] for s in subs):
         return record
     subs.append(record)

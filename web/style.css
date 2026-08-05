@@ -900,3 +900,96 @@ svg {
   background: var(--gs-body);
 }
 .chip.pick > span { cursor: pointer; }
+
+/* ================================================== subscription channels ==== */
+
+.subs-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+
+.channel-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chan-tile {
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 260px;
+  padding-right: 4px;
+}
+.chan-tile:hover { --sq-border: var(--gs-edge); }
+.chan-tile.on { --sq-border: var(--gs-verdigris); background: var(--gs-dark); }
+.chan-tile.on .chan-name { color: var(--gs-phosphor); }
+
+.chan-tile.all {
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  color: var(--gs-silver);
+  gap: 10px;
+  padding: 0 14px;
+  height: 60px;
+}
+.chan-all-mark { color: var(--gs-phosphor); font-size: var(--fs-large); line-height: 1; }
+
+.chan-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 8px 6px 8px 8px;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  color: var(--gs-silver);
+  text-align: left;
+}
+
+.chan-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.chan-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-meta { white-space: nowrap; }
+
+.chan-x {
+  background: none;
+  border: 0;
+  color: var(--gs-lit);
+  cursor: pointer;
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  padding: 0 6px;
+  align-self: stretch;
+  flex: none;
+}
+.chan-x:hover { color: var(--gs-red); }
+
+/* The avatar. A plain circle would be the one rounded thing in the app not going
+   through the squircle primitive, so it is a superellipse like everything else. */
+.avatar {
+  object-fit: cover;
+  background: var(--gs-body);
+  flex: none;
+  display: block;
+}
+
+.channel-results { display: flex; flex-direction: column; gap: 10px; }
+
+.chan-row {
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.chan-row:hover { --sq-border: var(--gs-edge); }
+.chan-row-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.chan-row-name { color: var(--gs-chrome); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chan-row .btn { flex: none; }

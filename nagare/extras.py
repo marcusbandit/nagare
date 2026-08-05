@@ -149,12 +149,22 @@ def _varint(value: int) -> bytes:
             return bytes(out)
 
 
-def search_params(sort: str = "relevance", date: str = "any", duration: str = "any") -> str:
+_RESULT_TYPE = {"video": 1, "channel": 2, "playlist": 3, "movie": 4}
+
+
+def search_params(
+    sort: str = "relevance",
+    date: str = "any",
+    duration: str = "any",
+    result_type: str = "video",
+) -> str:
     """Return the `sp` value for these filters, or "" when nothing is set."""
     sub = bytearray()
     if date in _DATE:
         sub += b"\x08" + _varint(_DATE[date])
-    sub += b"\x10\x01"  # type = video, so channels and playlists stay out
+    # Pin the result type so a video search never returns channels, and a
+    # channel search returns nothing but channels.
+    sub += b"\x10" + _varint(_RESULT_TYPE.get(result_type, 1))
     if duration in _DURATION:
         sub += b"\x18" + _varint(_DURATION[duration])
 
@@ -166,8 +176,14 @@ def search_params(sort: str = "relevance", date: str = "any", duration: str = "a
     return base64.urlsafe_b64encode(bytes(body)).decode().rstrip("=")
 
 
-def search_url(query: str, sort: str, date: str, duration: str) -> str:
-    sp = search_params(sort, date, duration)
+def search_url(
+    query: str,
+    sort: str = "relevance",
+    date: str = "any",
+    duration: str = "any",
+    result_type: str = "video",
+) -> str:
+    sp = search_params(sort, date, duration, result_type)
     q = urllib.parse.urlencode({"search_query": query})
     return f"https://www.youtube.com/results?{q}&sp={sp}"
 

@@ -90,13 +90,35 @@ async def api_subs() -> JSONResponse:
     return JSONResponse({"channels": subs.load()})
 
 
+@app.get("/api/search/channels")
+async def api_search_channels(q: str, limit: int = 12) -> JSONResponse:
+    q = q.strip()
+    if not q:
+        return JSONResponse({"channels": []})
+    try:
+        found = await ytx.search_channels(
+            extras.search_url(q, result_type="channel"), min(max(limit, 1), 30)
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, str(exc)) from exc
+    return JSONResponse({"channels": found})
+
+
 @app.post("/api/subscriptions")
 async def api_subscribe(payload: dict) -> JSONResponse:
-    target = (payload.get("target") or "").strip()
-    if not target:
-        raise HTTPException(400, "give a channel url, @handle or a video url")
+    # A search result is already resolved; subscribing to it should not cost
+    # another round trip just to look the channel up again.
+    channel = payload.get("channel")
     try:
-        record = await subs.add(target)
+        if isinstance(channel, dict) and channel.get("id"):
+            record = await subs.add_channel(channel)
+        else:
+            target = (payload.get("target") or "").strip()
+            if not target:
+                raise HTTPException(400, "give a channel url, @handle or a video url")
+            record = await subs.add(target)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, str(exc)) from exc
     return JSONResponse({"channel": record, "channels": subs.load()})

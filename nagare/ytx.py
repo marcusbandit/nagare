@@ -7,7 +7,7 @@ they can be killed cleanly and so ffmpeg can split the stream into live HLS.
 from __future__ import annotations
 
 import asyncio
-import itertools
+import re
 import urllib.request
 from typing import Any
 
@@ -91,14 +91,21 @@ def _resolve_sync(url: str) -> dict:
     return {"type": "video", "title": info.get("title") or "", "entries": [normalise(info)]}
 
 
+def _entries(info, limit: int) -> list:
+    """Entries can be a list, a generator or yt-dlp's PagedList. Only a list is
+    safe to slice, and playlistend already bounds how much is fetched."""
+    raw = (info or {}).get("entries") or []
+    if not isinstance(raw, list):
+        raw = list(raw)
+    return raw[:limit]
+
+
 def _search_filtered_sync(url: str, limit: int) -> list[dict]:
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
-    # extract_flat can hand back a lazy generator, which does not slice.
-    entries = itertools.islice((info or {}).get("entries") or [], limit)
     out = []
-    for e in entries:
+    for e in _entries(info, limit):
         if not e:
             continue
         normalised = normalise(e)
@@ -106,6 +113,53 @@ def _search_filtered_sync(url: str, limit: int) -> list[dict]:
         if normalised["id"] and len(normalised["id"]) == 11:
             out.append(normalised)
     return out
+
+
+def _abs_url(url: str) -> str:
+    """YouTube hands back protocol-relative avatar urls (//yt3.ggpht.com/...)."""
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url
+
+
+def pick_avatar(entry: dict) -> str:
+    """The biggest square thumbnail is the channel avatar; the wide ones are banners."""
+    thumbs = [t for t in (entry.get("thumbnails") or []) if t.get("url")]
+    if not thumbs:
+        return ""
+    square = [t for t in thumbs if t.get("width") and t.get("width") == t.get("height")]
+    pool = square or thumbs
+    return _abs_url(max(pool, key=lambda t: t.get("width") or 0)["url"])
+
+
+def normalise_channel(entry: dict) -> dict:
+    channel_id = entry.get("channel_id") or entry.get("id") or ""
+    return {
+        "id": channel_id,
+        "name": entry.get("channel") or entry.get("title") or entry.get("uploader") or "",
+        "url": entry.get("url") or f"https://www.youtube.com/channel/{channel_id}",
+        "avatar": pick_avatar(entry),
+        "followers": entry.get("channel_follower_count") or 0,
+        "description": (entry.get("description") or "")[:200],
+    }
+
+
+def _search_channels_sync(url: str, limit: int) -> list[dict]:
+    opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    out = []
+    for e in _entries(info, limit):
+        if not e:
+            continue
+        channel = normalise_channel(e)
+        if re.fullmatch(r"UC[\w-]{22}", channel["id"] or ""):
+            out.append(channel)
+    return out
+
+
+async def search_channels(url: str, limit: int = 12) -> list[dict]:
+    return await asyncio.to_thread(_search_channels_sync, url, limit)
 
 
 async def search(query: str, limit: int = 24) -> list[dict]:

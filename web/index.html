@@ -69,13 +69,23 @@
 
         <!-- Subscriptions only: who you follow, and a box to follow someone new. -->
         <div id="subs-bar" class="subs-bar hidden" data-squircle data-radius="14" data-edge>
-          <div class="chips" id="chip-subs"></div>
+          <div class="subs-head">
+            <span class="dim">following</span>
+            <span id="subs-count" class="dim"></span>
+          </div>
+          <div class="channel-strip" id="channel-strip"></div>
+
           <form class="chip-add" id="add-sub">
             <div class="field tight" data-squircle data-radius="10" data-edge>
-              <input id="sub-input" placeholder="@handle, channel url, or a video url" spellcheck="false" />
+              <input
+                id="sub-input"
+                placeholder="find a channel by name, or paste a url"
+                spellcheck="false"
+              />
             </div>
-            <button class="btn ghost" type="submit" data-squircle data-radius="10">subscribe</button>
+            <button class="btn ghost" type="submit" data-squircle data-radius="10">find</button>
           </form>
+          <div id="channel-results" class="channel-results"></div>
         </div>
 
         <div id="grid" class="grid"></div>

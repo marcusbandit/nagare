@@ -17,6 +17,7 @@ const state = {
   playlist: [], // queued-to-play videos
   autoNextTimer: 0,
   channels: [], // subscriptions
+  channelResults: [], // channel search results
   feedChannel: "", // "" = everyone
 };
 
@@ -178,47 +179,183 @@ async function unsubscribe(channel) {
   }
 }
 
-function renderSubChips() {
-  const host = $("#chip-subs");
-  const chips = [];
+function followers(n) {
+  if (!n) return "";
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M subs`;
+  if (n >= 1e3) return `${Math.round(n / 1e3)}K subs`;
+  return `${n} subs`;
+}
 
-  const all = document.createElement("span");
-  all.className = `chip pick${state.feedChannel ? "" : " on"}`;
+function avatarFor(channel, size = 52) {
+  const img = document.createElement("img");
+  img.className = "avatar";
+  img.loading = "lazy";
+  img.alt = "";
+  img.width = size;
+  img.height = size;
+  img.style.width = `${size}px`;
+  img.style.height = `${size}px`;
+  img.dataset.squircle = "";
+  // A big radius on a square gives a superellipse, which is the house look for
+  // an app-icon-shaped thing. A plain circle would be the only round corner in
+  // the app not going through the primitive.
+  img.dataset.radius = String(Math.round(size * 0.34));
+  // Prefer the locally cached copy: instant, and survives the url expiring.
+  img.src = channel.avatar_file ? `/thumbs/${channel.avatar_file}` : channel.avatar || "";
+  if (channel.avatar_file && channel.avatar) {
+    img.onerror = () => {
+      img.onerror = null;
+      img.src = channel.avatar;
+    };
+  }
+  return img;
+}
+
+function renderSubChips() {
+  const strip = $("#channel-strip");
+  const tiles = [];
+
+  const all = document.createElement("button");
+  all.className = `chan-tile all${state.feedChannel ? "" : " on"}`;
   all.dataset.squircle = "";
-  all.dataset.radius = "9";
+  all.dataset.radius = "12";
   all.dataset.edge = "";
-  all.textContent = `everyone (${state.channels.length})`;
+  all.innerHTML = `<span class="chan-all-mark">流</span><span class="chan-name">everyone</span>`;
   all.onclick = () => {
     state.feedChannel = "";
     showFeed();
   };
-  chips.push(all);
+  tiles.push(all);
 
   for (const c of state.channels) {
-    const chip = document.createElement("span");
-    chip.className = `chip pick${state.feedChannel === c.id ? " on" : ""}`;
-    chip.dataset.squircle = "";
-    chip.dataset.radius = "9";
-    chip.dataset.edge = "";
-    const label = document.createElement("span");
-    label.textContent = c.name;
-    label.onclick = () => {
+    const tile = document.createElement("div");
+    tile.className = `chan-tile${state.feedChannel === c.id ? " on" : ""}`;
+    tile.dataset.squircle = "";
+    tile.dataset.radius = "12";
+    tile.dataset.edge = "";
+
+    const pick = document.createElement("button");
+    pick.className = "chan-pick";
+    pick.title = `only ${c.name}`;
+    const name = document.createElement("span");
+    name.className = "chan-name";
+    name.textContent = c.name;
+    const meta = document.createElement("span");
+    meta.className = "chan-meta dim";
+    meta.textContent = followers(c.followers);
+    const text = document.createElement("span");
+    text.className = "chan-text";
+    text.append(name);
+    if (c.followers) text.append(meta);
+    pick.append(avatarFor(c, 44), text);
+    pick.onclick = () => {
       state.feedChannel = state.feedChannel === c.id ? "" : c.id;
       showFeed();
     };
+
     const x = document.createElement("button");
+    x.className = "chan-x";
     x.textContent = "×";
     x.title = `unsubscribe from ${c.name}`;
     x.onclick = (e) => {
       e.stopPropagation();
       unsubscribe(c);
     };
-    chip.append(label, x);
-    chips.push(chip);
+
+    tile.append(pick, x);
+    tiles.push(tile);
   }
 
-  host.replaceChildren(...chips);
+  strip.replaceChildren(...tiles);
+  $("#subs-count").textContent = state.channels.length
+    ? `${state.channels.length} channel${state.channels.length === 1 ? "" : "s"}`
+    : "none yet";
   squircleAll();
+}
+
+/** Search results: a row per channel with a subscribe button. */
+function channelRow(channel) {
+  const row = document.createElement("div");
+  row.className = "chan-row";
+  row.dataset.squircle = "";
+  row.dataset.radius = "12";
+  row.dataset.edge = "";
+
+  const body = document.createElement("div");
+  body.className = "chan-row-body";
+  const name = document.createElement("div");
+  name.className = "chan-row-name";
+  name.textContent = channel.name;
+  const meta = document.createElement("div");
+  meta.className = "card-sub dim";
+  meta.textContent = [followers(channel.followers), channel.description]
+    .filter(Boolean)
+    .join(" · ");
+  body.append(name, meta);
+
+  const already = isSubscribed(channel.id);
+  const action = button(
+    already ? "subscribed" : "subscribe",
+    already ? "ghost" : "primary",
+    already
+      ? () => unsubscribe(state.channels.find((c) => c.id === channel.id) || channel)
+      : async () => {
+          action.disabled = true;
+          await subscribeChannel(channel);
+          action.disabled = false;
+        },
+  );
+
+  row.append(avatarFor(channel, 52), body, action);
+  return row;
+}
+
+async function subscribeChannel(channel) {
+  try {
+    const res = await fetch("/api/subscriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "could not subscribe");
+    state.channels = data.channels;
+    toast(`subscribed to ${data.channel.name}`, { kind: "ok" });
+    renderSubChips();
+    renderChannelResults();
+    paintWatchActions();
+    showFeed();
+  } catch (err) {
+    toast(String(err.message || err), { kind: "err", timeout: 6000 });
+  }
+}
+
+function renderChannelResults() {
+  const host = $("#channel-results");
+  host.replaceChildren(...state.channelResults.map(channelRow));
+  squircleAll();
+}
+
+async function findChannels(query) {
+  const host = $("#channel-results");
+  host.replaceChildren();
+  const note = document.createElement("div");
+  note.className = "dim pad";
+  note.textContent = "searching channels…";
+  host.append(note);
+  try {
+    const data = await (
+      await fetch(`/api/search/channels?q=${encodeURIComponent(query)}&limit=10`)
+    ).json();
+    state.channelResults = data.channels || [];
+    if (!state.channelResults.length) {
+      note.textContent = "no channels matched.";
+      return;
+    }
+    renderChannelResults();
+  } catch (err) {
+    note.textContent = `channel search failed: ${err.message || err}`;
+  }
 }
 
 async function showFeed() {
@@ -1119,8 +1256,15 @@ async function init() {
     const input = $("#sub-input");
     const value = input.value.trim();
     if (!value) return;
-    input.value = "";
-    if (await subscribe(value)) showFeed();
+    // A url or a raw channel id names exactly one channel, so subscribe to it.
+    // Anything else is a search: YouTube fuzzy-matches handles and would happily
+    // subscribe you to the wrong creator, so show the options and let you pick.
+    if (/^https?:\/\//i.test(value) || /^UC[\w-]{22}$/.test(value)) {
+      input.value = "";
+      if (await subscribe(value)) showFeed();
+    } else {
+      findChannels(value);
+    }
   };
   $("#tab-queue").onclick = () => openDrawer("#drawer");
   $("#tab-filters").onclick = () => openDrawer("#filters");
