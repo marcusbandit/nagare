@@ -415,9 +415,11 @@ svg {
   z-index: 2;
 }
 
+/* Anchored to .player-wrap, not the control island, so it is not clipped by the
+   island's squircle. player.js sets left/bottom in the wrap's coordinates. */
 .scrub-bubble {
   position: absolute;
-  bottom: 30px;
+  bottom: 92px;
   transform: translateX(-50%);
   background: var(--gs-abyss);
   --sq-border: var(--gs-edge);

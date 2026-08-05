@@ -558,13 +558,24 @@ export class Player {
     const rect = this.scrubWrap.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const t = (x / rect.width) * d;
+
     this.bubble.classList.remove("hidden");
-    // Keep the bubble inside the island rather than letting it hang off the edge.
-    const half = this.bubble.offsetWidth / 2;
-    this.bubble.style.left = `${Math.max(half, Math.min(x, rect.width - half))}px`;
     this.bubbleTime.textContent = formatTime(t);
     this._previewFrame(t);
     squircleAll();
+
+    // The bubble is a child of the player root, so place it in the root's
+    // coordinates: follow the cursor along the scrubber, and sit just above the
+    // control island whatever height that island happens to be.
+    const wrapRect = this.wrap.getBoundingClientRect();
+    const islandRect = this.controls.getBoundingClientRect();
+    const width = this.bubble.offsetWidth || 172;
+    const half = width / 2;
+    const wanted = rect.left - wrapRect.left + x;
+    const left = Math.max(half + 6, Math.min(wanted, wrapRect.width - half - 6));
+
+    this.bubble.style.left = `${left}px`;
+    this.bubble.style.bottom = `${Math.max(wrapRect.bottom - islandRect.top + 10, 12)}px`;
   }
 
   _hoverEnd() {
