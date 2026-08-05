@@ -71,6 +71,8 @@ anything.
 | `NAGARE_QUALITY`     | `1080`              | `2160`/`1440`/`1080`/`720`/`best`/`audio` |
 | `NAGARE_CONCURRENCY` | `2`                 | Simultaneous downloads                 |
 | `NAGARE_OPEN`        | `1`                 | Open a browser on start; `0` to skip   |
+| `NAGARE_COOKIES_FROM_BROWSER` | (auto) | Browser to read YouTube cookies from, e.g. `firefox`, `chrome:Default`. Overrides the auto-detected default browser |
+| `NAGARE_COOKIES_FILE` | (unset)            | Path to an exported `cookies.txt`; use on a headless/remote box where no browser profile is reachable |
 
 ```sh
 NAGARE_QUALITY=720 NAGARE_HOME=/mnt/media/yt uv run nagare
@@ -88,6 +90,17 @@ from the same package and both are needed.
 
 **A download fails or stalls at 0%** - usually a stale yt-dlp against a YouTube
 change. `uv lock --upgrade-package yt-dlp && uv run nagare`.
+
+**"Sign in to confirm you're not a bot"** - YouTube distrusts anonymous requests
+to its player, which is what downloads, comments and metadata use (search does
+not, which is why search keeps working). nagare answers this by signing the
+requests in with your browser's YouTube cookies: it auto-detects your default
+browser (Firefox, Chrome, Brave, Edge, Safari, Vivaldi, Opera, or a Firefox fork
+like Zen/LibreWolf) and reads the login from it, so **just stay signed in to
+YouTube in that browser**. If a login lapses, nagare reopens YouTube for you and
+says so; sign back in and retry. Point it elsewhere with `NAGARE_COOKIES_FROM_BROWSER`
+or `NAGARE_COOKIES_FILE` (see the table above) — the latter is the way on a
+headless server.
 
 **Video plays but has no sound, or vice versa** - the `best` ladder can hand back
 codecs your browser will not decode. Use the default `1080`, which pins H.264/AAC.
@@ -137,6 +150,7 @@ Two details that are easy to get wrong and are handled here:
 | `nagare/config.py`  | Paths, port, quality ladders. All `NAGARE_*` env vars.    |
 | `nagare/doctor.py`  | Startup preflight: required binaries and install hints.   |
 | `nagare/ytx.py`     | yt-dlp python API: search, URL/playlist resolve, posters. |
+| `nagare/auth.py`    | YouTube sign-in: reads cookies from your browser so the player stops bot-checking. |
 | `nagare/jobs.py`    | The download pipeline and job state machine.              |
 | `nagare/server.py`  | FastAPI: API, SSE progress, byte-range media serving.     |
 | `electron/main.js`  | Desktop shell: spawns the server, owns its lifetime.      |

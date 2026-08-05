@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, doctor, extras, subs, ytx
+from . import auth, config, doctor, extras, subs, ytx
 from .jobs import manager
 
 config.ensure_dirs()
@@ -78,6 +78,19 @@ async def api_search(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
     return JSONResponse({"results": results, "kind": "search", "title": q})
+
+
+@app.get("/api/auth/status")
+async def api_auth_status() -> JSONResponse:
+    """Where YouTube cookies come from and whether a session is visible."""
+    return JSONResponse(await asyncio.to_thread(auth.status))
+
+
+@app.post("/api/auth/signin")
+async def api_auth_signin() -> JSONResponse:
+    """Open the default browser at YouTube's sign-in so cookies get refreshed."""
+    opened = await asyncio.to_thread(auth.open_signin, True)
+    return JSONResponse({"ok": opened, "browser": auth.pretty_source()})
 
 
 @app.get("/api/votes/{video_id}")
@@ -405,6 +418,7 @@ def main() -> None:
     # flush: stdout is block-buffered when piped (a launcher, a log file), and
     # this line is the only thing telling you where the server is.
     print(f"nagare -> {url}   (library: {config.ROOT})", flush=True)
+    print(f"nagare: authenticating YouTube with {auth.pretty_source()}", flush=True)
     if os.environ.get("NAGARE_OPEN", "1") == "1":
         _open_browser(url)
     uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="warning")

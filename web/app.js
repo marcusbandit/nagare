@@ -1,6 +1,6 @@
 import { squircleAll } from "/static/squircle.js";
 import { Player, formatTime } from "/static/player.js";
-import { confirmDialog, toast } from "/static/ui.js";
+import { confirmDialog, toast, isBotWall, signinToast } from "/static/ui.js";
 import * as store from "/static/store.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -914,6 +914,7 @@ async function loadComments(videoId) {
     if (state.watching?.id !== videoId) return;
     if (data.error) {
       stateEl.textContent = `comments unavailable: ${data.error}`;
+      if (isBotWall(data.error)) signinToast(data.error);
       return;
     }
     if (!data.comments.length) {
@@ -1148,7 +1149,9 @@ async function enqueue(videos) {
     body: JSON.stringify({ videos, quality: state.quality }),
   });
   if (!res.ok) {
-    toast(`could not queue: ${(await res.json()).detail || res.status}`, { kind: "err" });
+    const detail = (await res.json()).detail || res.status;
+    if (isBotWall(detail)) signinToast(detail);
+    else toast(`could not queue: ${detail}`, { kind: "err" });
     return;
   }
   const data = await res.json();

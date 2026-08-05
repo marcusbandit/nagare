@@ -140,3 +140,34 @@ export function toast(text, { kind = "info", timeout = 4000, action } = {}) {
   if (timeout) setTimeout(dismiss, timeout);
   return dismiss;
 }
+
+/** True when a server message is YouTube's "confirm you're not a bot" wall. */
+export function isBotWall(message) {
+  return /not a bot|sign in to confirm/i.test(String(message || ""));
+}
+
+/**
+ * Show a bot-wall message with a one-tap "sign in" that reopens YouTube in the
+ * default browser. The server opens it automatically on the first hit too; this
+ * is the manual path for when a login has lapsed and the auto-open was throttled.
+ */
+export function signinToast(message) {
+  return toast(String(message), {
+    kind: "err",
+    timeout: 12000,
+    action: {
+      label: "sign in",
+      onClick: async () => {
+        try {
+          const res = await fetch("/api/auth/signin", { method: "POST" });
+          const data = await res.json();
+          toast(data.ok ? `opened ${data.browser}` : "could not open a browser", {
+            kind: data.ok ? "ok" : "err",
+          });
+        } catch {
+          toast("could not open a browser", { kind: "err" });
+        }
+      },
+    },
+  });
+}

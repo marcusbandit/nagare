@@ -14,7 +14,7 @@ from typing import Any
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-from . import config
+from . import auth, config
 
 _BASE_OPTS: dict[str, Any] = {
     "quiet": True,
@@ -22,6 +22,9 @@ _BASE_OPTS: dict[str, Any] = {
     "skip_download": True,
     "ignoreerrors": True,
     "noprogress": True,
+    # Sign the player requests in so YouTube does not answer them with its
+    # "confirm you're not a bot" wall. Empty when no browser/file is configured.
+    **auth.ydl_opts(),
 }
 
 _UA = (
@@ -77,9 +80,14 @@ def _search_sync(query: str, limit: int) -> list[dict]:
 def _resolve_sync(url: str) -> dict:
     """Resolve a URL to either a single video or a playlist of videos."""
     opts = {**_BASE_OPTS, "extract_flat": "in_playlist"}
-    with YoutubeDL(opts) as ydl:
+    recorder = auth.Recorder()
+    with YoutubeDL({**opts, "logger": recorder}) as ydl:
         info = ydl.extract_info(url, download=False)
     if not info:
+        # ignoreerrors turns the bot wall into a silent None; the log is the only
+        # place it shows, so check there before calling it a generic miss.
+        if recorder.saw_bot_check():
+            raise ValueError(auth.recover("sign in to confirm you're not a bot"))
         raise ValueError("nothing found at that URL")
     if info.get("_type") == "playlist" or info.get("entries"):
         entries = [normalise(e) for e in (info.get("entries") or []) if e]
@@ -220,7 +228,7 @@ async def resolve(url: str) -> dict:
     try:
         return await asyncio.to_thread(_resolve_sync, url)
     except DownloadError as exc:
-        raise ValueError(str(exc).replace("ERROR: ", "")) from exc
+        raise ValueError(auth.recover(str(exc).replace("ERROR: ", ""))) from exc
 
 
 def _cache_thumb_sync(video_id: str, url: str) -> str:
