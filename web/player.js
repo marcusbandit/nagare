@@ -72,6 +72,10 @@ export class Player {
     this.onEnded = null; // () => play the next thing
     this.onSleep = null; // () => the sleep timer fired
 
+    this.tracks = [];        // available subtitle tracks
+    this.cues = [];          // parsed cues for the active track
+    this.activeLang = "";
+    this._lastCue = "";
     this.sleepAt = 0; // epoch ms, 0 = off
     this.sleepTimer = 0;
     this.holdTimer = 0;
@@ -79,6 +83,147 @@ export class Player {
     this._lastSave = 0;
 
     this._wire();
+  }
+
+  // -------------------------------------------------------------- subtitles
+
+  /** Parse WebVTT into cues. Auto-captions carry per-word timing tags and repeat
+      the previous line as they roll, so strip the tags and drop the repeats. */
+  static parseVtt(text) {
+    const seconds = (stamp) => {
+      const parts = stamp.trim().split(":").map(parseFloat);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return parts[0] || 0;
+    };
+    const cues = [];
+    for (const block of text.replace(/\r/g, "").split(/\n{2,}/)) {
+      const lines = block.split("\n").filter((l) => l.trim());
+      const i = lines.findIndex((l) => l.includes("-->"));
+      if (i < 0) continue;
+      const [from, to] = lines[i].split("-->").map((s) => s.trim().split(/\s+/)[0]);
+      const body = lines
+        .slice(i + 1)
+        .join("\n")
+        .replace(/<[^>]*>/g, "") // <00:00:01.234><c> karaoke markup
+        .trim();
+      if (!body) continue;
+      const previous = cues[cues.length - 1];
+      if (previous && previous.text === body) {
+        previous.end = seconds(to); // same line still on screen: extend it
+        continue;
+      }
+      cues.push({ start: seconds(from), end: seconds(to), text: body });
+    }
+    return cues;
+  }
+
+  async loadSubtitleTracks(videoId) {
+    this.tracks = [];
+    this.cues = [];
+    this.activeLang = "";
+    this._paintCue("");
+    try {
+      const data = await (await fetch(`/api/subtitles/${videoId}`)).json();
+      if (this.videoId !== videoId) return;
+      this.tracks = data.tracks || [];
+      this.btnCc.classList.toggle("off", !this.tracks.length);
+      this.btnCc.title = this.tracks.length
+        ? `Subtitles (${this.tracks.length} available)`
+        : "No subtitles for this video";
+      // Turn them straight back on if they were on for the last video.
+      const remembered = localStorage.getItem("nagare.subs");
+      if (remembered) {
+        const match =
+          this.tracks.find((t) => t.lang === remembered) ||
+          this.tracks.find((t) => t.lang.startsWith(remembered.slice(0, 2)));
+        if (match) this.selectSubtitles(match.lang);
+      }
+    } catch {
+      this.tracks = [];
+    }
+  }
+
+  async selectSubtitles(lang) {
+    if (!lang) {
+      this.activeLang = "";
+      this.cues = [];
+      this._paintCue("");
+      this.btnCc.classList.remove("on");
+      localStorage.removeItem("nagare.subs");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/subtitles/${this.videoId}/${encodeURIComponent(lang)}`);
+      if (!res.ok) throw new Error("track unavailable");
+      this.cues = Player.parseVtt(await res.text());
+      this.activeLang = lang;
+      this.btnCc.classList.add("on");
+      this.btnCc.classList.remove("off");
+      localStorage.setItem("nagare.subs", lang);
+      this._showToast(`subtitles: ${lang}`);
+    } catch (err) {
+      this._showToast("could not load that subtitle track");
+    }
+  }
+
+  _paintCue(text) {
+    if (!this.cueBox) return;
+    this.cueBox.textContent = text;
+    this.cueBox.classList.toggle("hidden", !text);
+    if (text) this._placeCue();
+  }
+
+  /** Sit the cue just above the control island, measured rather than guessed:
+      the island's height depends on its contents, and when it hides the cue
+      should drop into the space it leaves. */
+  _placeCue() {
+    const wrapRect = this.wrap.getBoundingClientRect();
+    const islandRect = this.controls.getBoundingClientRect();
+    const hidden = this.controls.classList.contains("is-hidden");
+    const bottom = hidden ? 28 : Math.max(wrapRect.bottom - islandRect.top + 12, 28);
+    this.cueBox.style.bottom = `${Math.round(bottom)}px`;
+  }
+
+  _updateCue(t) {
+    if (!this.cues.length) return;
+    const cue = this.cues.find((c) => t >= c.start && t <= c.end);
+    const text = cue ? cue.text : "";
+    if (text !== this._lastCue) {
+      this._lastCue = text;
+      this._paintCue(text);
+    }
+  }
+
+  toggleSubtitleMenu() {
+    if (!this.tracks.length) {
+      this._showToast("no subtitles for this video");
+      return;
+    }
+    const open = this.ccMenu.classList.toggle("hidden");
+    if (open) return;
+    const rows = [];
+    const off = document.createElement("button");
+    off.className = `cc-item${this.activeLang ? "" : " on"}`;
+    off.textContent = "off";
+    off.onclick = () => {
+      this.selectSubtitles("");
+      this.ccMenu.classList.add("hidden");
+    };
+    rows.push(off);
+    for (const t of this.tracks) {
+      const b = document.createElement("button");
+      b.className = `cc-item${this.activeLang === t.lang ? " on" : ""}`;
+      b.textContent = `${t.lang}${t.auto ? "  (auto)" : ""}`;
+      b.title = t.name || t.lang;
+      b.onclick = () => {
+        this.selectSubtitles(t.lang);
+        this.ccMenu.classList.add("hidden");
+      };
+      rows.push(b);
+    }
+    this.ccMenu.replaceChildren(...rows);
+    squircleAll();
   }
 
   // ------------------------------------------------------------ sleep timer
@@ -117,6 +262,9 @@ export class Player {
     this.btnPip = btn("#btn-pip");
     this.btnSpeed = btn("#btn-speed");
     this.btnSb = btn("#btn-sb");
+    this.btnCc = btn("#btn-cc");
+    this.ccMenu = btn("#cc-menu");
+    this.cueBox = btn("#cue-box");
     this.vol = btn("#vol");
 
     this.btnPlay.innerHTML = svg(ICON.play);
@@ -137,6 +285,12 @@ export class Player {
     this.btnPip.onclick = () => this.togglePip();
     this.btnSpeed.onclick = () => this.cycleSpeed();
     this.btnSb.onclick = () => this.toggleSponsorBlock();
+    this.btnCc.onclick = (e) => {
+      e.stopPropagation();
+      this.toggleSubtitleMenu();
+    };
+    // Any click elsewhere closes the track menu.
+    document.addEventListener("click", () => this.ccMenu?.classList.add("hidden"));
     btn("#sb-undo").onclick = (e) => {
       e.stopPropagation();
       this.undoSkip();
@@ -277,7 +431,10 @@ export class Player {
     }
 
     this.setSegments([]);
-    if (opts.videoId) this._loadSegments(opts.videoId);
+    if (opts.videoId) {
+      this._loadSegments(opts.videoId);
+      this.loadSubtitleTracks(opts.videoId);
+    }
     this._paintProgress();
     this._wake();
   }
@@ -296,6 +453,10 @@ export class Player {
     this.bandsEl.replaceChildren();
     this.manual.classList.add("hidden");
     this.toast.classList.add("hidden");
+    this.cues = [];
+    this._lastCue = "";
+    this._paintCue("");
+    this.ccMenu?.classList.add("hidden");
     if (this.previewVideo) {
       this.previewVideo.remove();
       this.previewVideo = null;
@@ -531,6 +692,7 @@ export class Player {
     this.timeEl.textContent = `${formatTime(t)} / ${formatTime(d)}`;
     if (this.bandsEl.childElementCount !== this.segments.length) this._paintBands();
     if (!this.dragging && overrideTime === undefined) this._checkSegments(t);
+    this._updateCue(t);
     this._paintBuffered();
 
     // Persist the playhead a few times a minute, not on every timeupdate.
@@ -617,6 +779,7 @@ export class Player {
   _wake() {
     this.controls.classList.remove("is-hidden");
     this.wrap.classList.remove("cursor-hidden");
+    this._placeCue();
     this._sleepSoon();
   }
 
@@ -630,6 +793,7 @@ export class Player {
     if (this.video.paused) return;
     this.controls.classList.add("is-hidden");
     this.wrap.classList.add("cursor-hidden");
+    this._placeCue();
     this._hoverEnd();
   }
 }

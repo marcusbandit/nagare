@@ -188,6 +188,110 @@ def search_url(
     return f"https://www.youtube.com/results?{q}&sp={sp}"
 
 
+_subs_cache: dict[str, tuple[float, list[dict]]] = {}
+_vtt_cache: dict[str, tuple[float, str]] = {}
+
+
+def _subtitle_tracks_sync(video_id: str) -> list[dict]:
+    opts: Any = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "noprogress": True,
+    }
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={video_id}", download=False
+        )
+    info = info or {}
+
+    tracks: list[dict] = []
+    seen: set[str] = set()
+
+    def collect(store: dict, auto: bool) -> None:
+        for lang, formats in (store or {}).items():
+            if lang == "live_chat" or lang in seen:
+                continue
+            # The browser wants WebVTT; YouTube offers it directly, so there is
+            # nothing to convert.
+            if not any(f.get("ext") == "vtt" for f in formats or []):
+                continue
+            seen.add(lang)
+            name = next((f.get("name") for f in formats if f.get("name")), "") or lang
+            tracks.append(
+                {"lang": lang, "name": name, "auto": auto}
+            )
+
+    collect(info.get("subtitles") or {}, auto=False)
+    collect(info.get("automatic_captions") or {}, auto=True)
+
+    # Hundreds of machine-translated variants are noise. Keep every human track,
+    # every English one, and the plain (untranslated) language codes.
+    def keep(t: dict) -> bool:
+        if not t["auto"]:
+            return True
+        lang = t["lang"]
+        return lang.startswith("en") or "-" not in lang or lang.endswith("-orig")
+
+    tracks = [t for t in tracks if keep(t)]
+
+    def rank(t: dict) -> tuple:
+        return (t["auto"], not t["lang"].startswith("en"), t["lang"])
+
+    tracks.sort(key=rank)
+    return tracks[:60]
+
+
+async def subtitle_tracks(video_id: str) -> list[dict]:
+    hit = _subs_cache.get(video_id)
+    if hit and time.time() - hit[0] < _CACHE_TTL:
+        return hit[1]
+    try:
+        tracks = await asyncio.to_thread(_subtitle_tracks_sync, video_id)
+    except Exception:
+        return []
+    _subs_cache[video_id] = (time.time(), tracks)
+    return tracks
+
+
+def _vtt_sync(video_id: str, lang: str) -> str:
+    opts: Any = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "noprogress": True,
+    }
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={video_id}", download=False
+        )
+    info = info or {}
+    pool = {**(info.get("automatic_captions") or {}), **(info.get("subtitles") or {})}
+    formats = pool.get(lang) or []
+    url = next((f["url"] for f in formats if f.get("ext") == "vtt" and f.get("url")), "")
+    if not url:
+        raise ValueError(f"no vtt track for {lang}")
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return resp.read().decode("utf-8", errors="replace")
+
+
+async def subtitle_vtt(video_id: str, lang: str) -> str:
+    """Fetch a WebVTT track. Served through us so the page never has to reach
+    googlevideo directly (and trip over CORS)."""
+    key = f"{video_id}:{lang}"
+    hit = _vtt_cache.get(key)
+    if hit and time.time() - hit[0] < _CACHE_TTL:
+        return hit[1]
+    text = await asyncio.to_thread(_vtt_sync, video_id, lang)
+    _vtt_cache[key] = (time.time(), text)
+    return text
+
+
 def _comments_sync(video_id: str, limit: int) -> dict:
     opts: Any = {
         "quiet": True,

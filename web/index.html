@@ -88,6 +88,17 @@
           <div id="channel-results" class="channel-results"></div>
         </div>
 
+        <!-- Channel view header -->
+        <div id="chan-bar" class="chan-bar hidden" data-squircle data-radius="14" data-edge>
+          <img class="avatar" id="chan-bar-avatar" width="76" height="76" alt="" />
+          <div class="chan-bar-body">
+            <div class="title-lg" id="chan-bar-name"></div>
+            <div class="dim" id="chan-bar-meta"></div>
+            <div class="dim chan-bar-desc" id="chan-bar-desc"></div>
+          </div>
+          <button class="btn primary" id="chan-bar-sub" data-squircle data-radius="12">subscribe</button>
+        </div>
+
         <div id="grid" class="grid"></div>
         <div id="empty" class="empty dim"></div>
       </div>
@@ -102,6 +113,10 @@
           </div>
 
           <div class="player-center" id="player-center"></div>
+
+          <!-- Subtitles are rendered here rather than by a native <track>, so
+               they sit above the control island and follow the app's type. -->
+          <div class="cue-box hidden" id="cue-box"></div>
 
           <!-- Lives at the player root, NOT inside the control island: the island
                is clipped to its own squircle, so a preview taller than the island
@@ -164,6 +179,10 @@
 
               <button class="pbtn wide" id="btn-speed" title="Playback speed (hold the picture for 2x)">1x</button>
               <button class="pbtn wide" id="btn-sleep" title="Sleep timer">zZ</button>
+              <div class="cc-wrap">
+                <button class="pbtn wide off" id="btn-cc" title="Subtitles">cc</button>
+                <div class="cc-menu hidden" id="cc-menu" data-squircle data-radius="12" data-edge></div>
+              </div>
               <button class="pbtn" id="btn-sb" title="SponsorBlock"></button>
               <button class="pbtn" id="btn-pip" title="Picture in picture"></button>
               <button class="pbtn" id="btn-full" title="Fullscreen (f)"></button>
@@ -173,16 +192,32 @@
 
         <div class="watch-meta">
           <h1 class="title-lg" id="w-title"></h1>
-          <div class="watch-sub">
-            <span class="dim" id="w-sub"></span>
-            <span id="w-votes" class="votes dim"></span>
+          <div class="watch-stats dim" id="w-stats"></div>
+
+          <div class="channel-row" data-squircle data-radius="14" data-edge>
+            <button class="chan-ident" id="w-channel" title="Go to the channel">
+              <img class="avatar" id="w-avatar" width="52" height="52" alt="" />
+              <span class="chan-text">
+                <span class="chan-name" id="w-chan-name"></span>
+                <span class="chan-meta dim" id="w-chan-subs"></span>
+              </span>
+            </button>
             <span class="spacer"></span>
-            <button class="btn ghost" id="w-sub" data-squircle data-radius="12">subscribe</button>
+            <button class="btn ghost" id="w-visit" data-squircle data-radius="12">channel</button>
+            <button class="btn ghost" id="w-subscribe" data-squircle data-radius="12">subscribe</button>
+          </div>
+
+          <div class="watch-actions">
+            <button class="btn primary" id="w-get" data-squircle data-radius="12">download</button>
             <button class="btn ghost" id="w-queue" data-squircle data-radius="12">+ queue</button>
             <button class="btn ghost" id="w-mpv" data-squircle data-radius="12">mpv</button>
-            <button class="btn primary" id="w-get" data-squircle data-radius="12">download</button>
+            <button class="btn ghost" id="w-copy" data-squircle data-radius="12">copy link</button>
+            <button class="btn ghost" id="w-yt" data-squircle data-radius="12">on youtube</button>
+            <button class="btn ghost danger hidden" id="w-delete" data-squircle data-radius="12">delete</button>
           </div>
+
           <div class="desc" id="w-desc" data-squircle data-radius="14" data-edge></div>
+          <button class="desc-toggle dim hidden" id="w-desc-more">show more</button>
         </div>
 
         <div class="comments" id="comments">
@@ -276,6 +311,9 @@
         <div class="subhead dim">hide</div>
         <label class="row"><span>shorts (under a minute)</span><input type="checkbox" id="f-shorts" /></label>
         <label class="row"><span>things I have watched</span><input type="checkbox" id="f-watched" /></label>
+
+        <div class="subhead dim">when a video ends</div>
+        <label class="row"><span>ask whether to delete it</span><input type="checkbox" id="f-askdelete" /></label>
 
         <div class="subhead dim">blocked words in titles</div>
         <div class="chips" id="chip-words"></div>

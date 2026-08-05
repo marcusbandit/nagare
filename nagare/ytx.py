@@ -162,6 +162,52 @@ async def search_channels(url: str, limit: int = 12) -> list[dict]:
     return await asyncio.to_thread(_search_channels_sync, url, limit)
 
 
+def _channel_sync(channel_id: str, limit: int) -> dict:
+    url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    opts = {**_BASE_OPTS, "extract_flat": "in_playlist", "playlistend": limit}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if not info:
+        raise ValueError("channel not found")
+    videos = [normalise(e) for e in _entries(info, limit) if e]
+    return {
+        "channel": {
+            "id": info.get("channel_id") or channel_id,
+            "name": info.get("channel") or info.get("uploader") or info.get("title") or "",
+            "url": f"https://www.youtube.com/channel/{channel_id}",
+            "avatar": pick_avatar(info),
+            "followers": info.get("channel_follower_count") or 0,
+            "description": (info.get("description") or "")[:600],
+        },
+        "videos": [v for v in videos if v["id"]],
+    }
+
+
+def _video_full_sync(video_id: str) -> dict:
+    """Single video, with the description uncropped (cards crop it, the watch
+    page should not)."""
+    opts = {**_BASE_OPTS, "extract_flat": False}
+    with YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={video_id}", download=False
+        )
+    info = info or {}
+    out = normalise(info)
+    out["description"] = info.get("description") or ""
+    out["like_count"] = info.get("like_count") or 0
+    out["channel_url"] = info.get("channel_url") or ""
+    out["channel_followers"] = info.get("channel_follower_count") or 0
+    return out
+
+
+async def video_full(video_id: str) -> dict:
+    return await asyncio.to_thread(_video_full_sync, video_id)
+
+
+async def channel(channel_id: str, limit: int = 30) -> dict:
+    return await asyncio.to_thread(_channel_sync, channel_id, limit)
+
+
 async def search(query: str, limit: int = 24) -> list[dict]:
     return await asyncio.to_thread(_search_sync, query, limit)
 

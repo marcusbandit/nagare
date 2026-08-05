@@ -131,6 +131,15 @@ async def api_unsubscribe(channel_id: str) -> JSONResponse:
     return JSONResponse({"channels": subs.load()})
 
 
+@app.get("/api/channel/{channel_id}")
+async def api_channel(channel_id: str, limit: int = 30) -> JSONResponse:
+    try:
+        data = await ytx.channel(channel_id, min(max(limit, 1), 90))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(404, str(exc)) from exc
+    return JSONResponse(data)
+
+
 @app.get("/api/feed")
 async def api_feed(limit: int = 60, channel: str = "") -> JSONResponse:
     return JSONResponse(await subs.feed(min(max(limit, 1), 200), channel))
@@ -157,6 +166,20 @@ async def api_sponsorblock(video_id: str) -> JSONResponse:
     return JSONResponse({"segments": await extras.sponsor_segments(video_id)})
 
 
+@app.get("/api/subtitles/{video_id}")
+async def api_subtitle_tracks(video_id: str) -> JSONResponse:
+    return JSONResponse({"tracks": await extras.subtitle_tracks(video_id)})
+
+
+@app.get("/api/subtitles/{video_id}/{lang}")
+async def api_subtitle_vtt(video_id: str, lang: str) -> Response:
+    try:
+        text = await extras.subtitle_vtt(video_id, lang)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(404, str(exc)) from exc
+    return Response(text, media_type="text/vtt; charset=utf-8")
+
+
 @app.get("/api/comments/{video_id}")
 async def api_comments(video_id: str, limit: int = 120) -> JSONResponse:
     return JSONResponse(await extras.comments(video_id, min(max(limit, 1), 500)))
@@ -173,6 +196,11 @@ async def api_video(video_id: str) -> JSONResponse:
     if not entries:
         raise HTTPException(404, "video not found")
     return JSONResponse(entries[0])
+
+
+@app.get("/api/video/{video_id}/full")
+async def api_video_full(video_id: str) -> JSONResponse:
+    return JSONResponse(await ytx.video_full(video_id))
 
 
 @app.get("/api/jobs")

@@ -18,6 +18,7 @@ const state = {
   autoNextTimer: 0,
   channels: [], // subscriptions
   channelResults: [], // channel search results
+  channelViewing: null, // channel whose page is open
   feedChannel: "", // "" = everyone
 };
 
@@ -123,6 +124,7 @@ function setMode(mode) {
   $("#bar").classList.toggle("bar-quiet", mode === "hero");
   $("#lib-bar").classList.toggle("hidden", mode !== "library");
   $("#subs-bar").classList.toggle("hidden", mode !== "feed");
+  $("#chan-bar").classList.toggle("hidden", mode !== "channel");
   squircleAll();
 }
 
@@ -310,7 +312,7 @@ function channelRow(channel) {
   return row;
 }
 
-async function subscribeChannel(channel) {
+async function subscribeChannel(channel, { stay = false } = {}) {
   try {
     const res = await fetch("/api/subscriptions", {
       method: "POST",
@@ -324,7 +326,7 @@ async function subscribeChannel(channel) {
     renderSubChips();
     renderChannelResults();
     paintWatchActions();
-    showFeed();
+    if (!stay) showFeed();
   } catch (err) {
     toast(String(err.message || err), { kind: "err", timeout: 6000 });
   }
@@ -356,6 +358,57 @@ async function findChannels(query) {
   } catch (err) {
     note.textContent = `channel search failed: ${err.message || err}`;
   }
+}
+
+/** A channel's own page: header plus its recent uploads. */
+async function openChannel(channelId) {
+  show("browse");
+  setMode("channel");
+  $("#browse-title").textContent = "channel";
+  $("#grab-all").classList.add("hidden");
+  $("#status").textContent = "loading channel…";
+  state.results = [];
+  render();
+
+  try {
+    const data = await (await fetch(`/api/channel/${channelId}?limit=40`)).json();
+    if (!data.channel) throw new Error("channel not found");
+    const c = data.channel;
+    state.channelViewing = c;
+    state.results = data.videos || [];
+
+    $("#chan-bar-name").textContent = c.name;
+    $("#chan-bar-meta").textContent = [followers(c.followers), `${state.results.length} recent`]
+      .filter(Boolean)
+      .join("  ·  ");
+    $("#chan-bar-desc").textContent = c.description || "";
+    const av = $("#chan-bar-avatar");
+    const local = state.channels.find((s) => s.id === c.id);
+    av.src = local?.avatar_file ? `/thumbs/${local.avatar_file}` : c.avatar || "";
+    av.dataset.squircle = "";
+    av.dataset.radius = "26";
+    av.classList.toggle("hidden", !av.src);
+
+    paintChannelSubButton(c);
+    $("#browse-title").textContent = c.name;
+    $("#status").textContent = "";
+    $("#empty").textContent = "no uploads found.";
+    render();
+  } catch (err) {
+    $("#status").textContent = `channel failed: ${err.message || err}`;
+  }
+}
+
+function paintChannelSubButton(channel) {
+  const btn = $("#chan-bar-sub");
+  const already = isSubscribed(channel.id);
+  btn.textContent = already ? "subscribed" : "subscribe";
+  btn.className = `btn ${already ? "ghost" : "primary"}`;
+  btn.onclick = async () => {
+    if (already) await unsubscribe(state.channels.find((c) => c.id === channel.id) || channel);
+    else await subscribeChannel(channel, { stay: true });
+    paintChannelSubButton(channel);
+  };
 }
 
 async function showFeed() {
@@ -535,10 +588,11 @@ async function deleteDownload(job) {
     confirmLabel: "delete",
     danger: true,
   });
-  if (!ok) return;
+  if (!ok) return false;
   if (state.watching && state.watching.id === job.id) player.unload();
   await fetch(`/api/jobs/${job.id}`, { method: "DELETE" });
   toast("deleted", { kind: "ok" });
+  return true;
 }
 
 async function sweepWatched() {
@@ -562,6 +616,24 @@ async function sweepWatched() {
   toast(`freed ${bytes(total)}`, { kind: "ok" });
 }
 
+/** End-of-video prompt. Has its own opt-out, because a dialog after every
+    single video would be its own kind of annoying. */
+async function offerDeleteOnFinish(job) {
+  const ok = await confirmDialog({
+    title: "Finished. Delete it?",
+    body: `"${job.title}"\n\nFrees ${bytes(job.fetched_bytes)}. You can download it again any time.\n\nTurn this prompt off in filters.`,
+    confirmLabel: `delete ${bytes(job.fetched_bytes)}`,
+    cancelLabel: "keep",
+    danger: true,
+  });
+  if (!ok) return false;
+  await fetch(`/api/jobs/${job.id}`, { method: "DELETE" });
+  toast(`freed ${bytes(job.fetched_bytes)}`, { kind: "ok" });
+  player.unload();
+  show("browse");
+  return true;
+}
+
 // ---------------------------------------------------------------------- watch
 
 async function openWatch(video) {
@@ -569,23 +641,73 @@ async function openWatch(video) {
   state.watching = video;
   show("watch");
 
-  $("#w-title").textContent = video.title;
-  $("#w-sub").textContent = [video.uploader, views(video.view_count), ymd(video.upload_date)]
-    .filter(Boolean)
-    .join(" · ");
-  $("#w-votes").textContent = "";
-  const desc = $("#w-desc");
-  desc.textContent = video.description || "";
-  desc.classList.remove("open");
-  desc.onclick = () => desc.classList.toggle("open");
-
+  paintWatchMeta(video);
   paintWatchActions();
   renderUpNext();
 
   await playBest(video);
   loadComments(video.id);
   loadVotes(video.id);
+  // Search results and RSS feed entries are flat: no description, often no
+  // channel id or view count. Fetch the real thing and repaint once it lands.
+  enrichWatch(video.id);
   squircleAll();
+}
+
+function paintWatchMeta(video) {
+  $("#w-title").textContent = video.title;
+  $("#w-stats").textContent = [views(video.view_count), ymd(video.upload_date)]
+    .filter(Boolean)
+    .join("  ·  ");
+
+  $("#w-chan-name").textContent = video.uploader || "";
+  const channel = state.channels.find((c) => c.id === video.channel_id);
+  $("#w-chan-subs").textContent = channel ? followers(channel.followers) : "";
+  const avatar = $("#w-avatar");
+  const src = channel
+    ? channel.avatar_file
+      ? `/thumbs/${channel.avatar_file}`
+      : channel.avatar
+    : "";
+  avatar.src = src || "";
+  avatar.classList.toggle("hidden", !src);
+  avatar.dataset.squircle = "";
+  avatar.dataset.radius = "18";
+
+  const desc = $("#w-desc");
+  desc.textContent = video.description || "";
+  desc.classList.remove("open");
+  const more = $("#w-desc-more");
+  // Only offer to expand when there is something hidden.
+  requestAnimationFrame(() => {
+    const clipped = desc.scrollHeight > desc.clientHeight + 4;
+    more.classList.toggle("hidden", !clipped);
+    more.textContent = "show more";
+  });
+  more.onclick = () => {
+    const open = desc.classList.toggle("open");
+    more.textContent = open ? "show less" : "show more";
+  };
+  desc.onclick = () => more.click();
+}
+
+async function enrichWatch(videoId) {
+  try {
+    const full = await (await fetch(`/api/video/${videoId}`)).json();
+    if (state.watching?.id !== videoId || !full.id) return;
+    // Keep whatever we already had (a feed entry knows its publish date), and
+    // fill the gaps from the full extraction.
+    const merged = { ...state.watching };
+    for (const [k, v] of Object.entries(full)) {
+      if (v !== "" && v !== 0 && v != null) merged[k] = v;
+    }
+    state.watching = merged;
+    paintWatchMeta(merged);
+    paintWatchActions();
+    squircleAll();
+  } catch {
+    /* offline: the flat metadata we already showed stands */
+  }
 }
 
 function renderUpNext() {
@@ -646,7 +768,7 @@ function paintWatchActions() {
   // Subscribe straight from what you are watching. The feed entries carry a
   // channel_id; search results sometimes do not, so fall back to the video URL
   // and let the server work the channel out.
-  const subBtn = $("#w-sub");
+  const subBtn = $("#w-subscribe");
   const channelId = v.channel_id || "";
   if (channelId && isSubscribed(channelId)) {
     subBtn.textContent = "subscribed";
@@ -659,6 +781,34 @@ function paintWatchActions() {
       await subscribe(channelId || v.url);
       subBtn.disabled = false;
       paintWatchActions();
+    };
+  }
+
+  const visit = () => (channelId ? openChannel(channelId) : toast("no channel for this one"));
+  $("#w-visit").onclick = visit;
+  $("#w-channel").onclick = visit;
+  $("#w-visit").disabled = !channelId;
+
+  $("#w-copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(v.url);
+      toast("link copied", { kind: "ok", timeout: 2000 });
+    } catch {
+      toast("could not copy", { kind: "err" });
+    }
+  };
+  $("#w-yt").onclick = () => window.open(v.url, "_blank", "noopener");
+
+  const del = $("#w-delete");
+  const owned = job && job.state === "done";
+  del.classList.toggle("hidden", !owned);
+  if (owned) {
+    del.textContent = `delete ${bytes(job.fetched_bytes)}`;
+    del.onclick = async () => {
+      if (await deleteDownload(job)) {
+        player.unload();
+        show("browse");
+      }
     };
   }
 
@@ -955,6 +1105,9 @@ function render() {
       $("#status").textContent = `${visible.length} results${hidden ? ` · ${hidden} filtered out` : ""}`;
     }
     if (library) paintLibraryBar();
+    if (state.mode === "channel" && state.channelViewing) {
+      paintChannelSubButton(state.channelViewing);
+    }
   }
   if (state.view === "watch") paintWatchActions();
 
@@ -1017,7 +1170,43 @@ async function runSearch(query, { into = "results" } = {}) {
   return data;
 }
 
+const looksLikeUrl = (s) => /^(https?:\/\/|www\.)/i.test(s.trim());
+
+/** A pasted link names one thing. Go straight to it rather than showing a
+    one-item "search result" grid; only a playlist is worth listing. */
+async function openLink(url) {
+  $("#status").textContent = "opening…";
+  try {
+    const data = await runSearch(url);
+    const entries = data.results || [];
+    if (!entries.length) throw new Error("nothing found at that link");
+    if (data.kind === "playlist" && entries.length > 1) {
+      show("browse");
+      setMode("results");
+      state.results = entries;
+      state.lastQuery = url;
+      $("#browse-title").textContent = data.title || "playlist";
+      const all = $("#grab-all");
+      all.classList.remove("hidden");
+      all.textContent = `get all ${entries.length}`;
+      all.onclick = () => enqueue(entries.filter((v) => !store.isBlocked(v)));
+      render();
+      return;
+    }
+    state.results = entries;
+    openWatch(entries[0]);
+  } catch (err) {
+    show("browse");
+    setMode("results");
+    $("#status").textContent = String(err.message || err);
+    state.results = [];
+    $("#empty").textContent = "could not open that link.";
+    render();
+  }
+}
+
 async function doSearch(query) {
+  if (looksLikeUrl(query)) return openLink(query);
   $("#status").textContent = "searching…";
   show("browse");
   setMode("results");
@@ -1146,6 +1335,7 @@ function wireFilters() {
   bind("#f-dur", "videoDuration");
   bind("#f-shorts", "hideShorts", "change", "checked");
   bind("#f-watched", "hideWatched", "change", "checked");
+  bind("#f-askdelete", "askDeleteOnFinish", "change", "checked");
 
   const addTo = (formSel, inputSel, key) => {
     $(formSel).onsubmit = (e) => {
@@ -1180,6 +1370,13 @@ function wireHero() {
       $("#hero-hint").textContent = "type to search · enter for the full grid";
       return;
     }
+    // A link is not a query. Do not fire searches at it while it is being
+    // pasted; enter opens it directly.
+    if (looksLikeUrl(value)) {
+      $("#hero-results").replaceChildren();
+      $("#hero-hint").textContent = "link detected · enter to open it";
+      return;
+    }
     $("#hero-hint").textContent = "searching…";
     timer = setTimeout(async () => {
       const mine = ++seq;
@@ -1209,9 +1406,16 @@ function wireHero() {
 async function init() {
   player = new Player();
   player.onProgress = (id, t, d) => store.saveProgress(id, t, d);
-  player.onEnded = () => {
-    if (state.watching) store.markWatched(state.watching.id, true);
+  player.onEnded = async () => {
+    const finished = state.watching;
+    if (finished) store.markWatched(finished.id, true);
     render();
+    // Offer to reclaim the space while it is obvious the video is done with.
+    const job = finished && state.jobs.get(finished.id);
+    if (job && job.state === "done" && store.getSettings().askDeleteOnFinish) {
+      const gone = await offerDeleteOnFinish(job);
+      if (gone) return; // nothing to autoplay from a page we just left
+    }
     startAutoNext();
   };
   player.onSleep = () => toast("sleep timer: paused", { kind: "info", timeout: 8000 });

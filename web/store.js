@@ -76,18 +76,30 @@ export function watchState(videoId, duration) {
 // ------------------------------------------------------------------ settings
 
 const DEFAULTS = {
-  autoplay: true,
+  // Off. Having the next video start on its own is the single most intrusive
+  // thing a player can do; opt in from the watch page if you want it.
+  autoplay: false,
   sponsorblock: true,
   blockedWords: [],
   blockedChannels: [],
   hideShorts: true,
   hideWatched: false,
+  askDeleteOnFinish: true,
   sort: "relevance",
   uploadDate: "any",
   videoDuration: "any",
 };
 
+// Bump when a default changes in a way that should override what is already
+// stored. Without this, anyone who ran the old build keeps autoplay on forever,
+// because their settings object already has autoplay: true written into it.
+const SETTINGS_VERSION = 2;
+
 let settings = { ...DEFAULTS, ...read(KEY_SETTINGS, {}) };
+if (settings.version !== SETTINGS_VERSION) {
+  settings = { ...settings, autoplay: false, version: SETTINGS_VERSION };
+  write(KEY_SETTINGS, settings);
+}
 
 export function getSettings() {
   return settings;
