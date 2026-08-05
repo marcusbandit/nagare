@@ -79,7 +79,18 @@ elif command -v npm >/dev/null 2>&1; then
   RUN=(npx --no-install)
   INSTALL=(npm install)
 else
-  die "need bun or npm to package the Electron shell. Install one:  brew install oven-sh/bun/bun"
+  case "$(uname -s)" in
+    Darwin) hint="brew install oven-sh/bun/bun" ;;
+    Linux)
+      if [ -f /etc/os-release ] && grep -qiE '^ID(_LIKE)?=.*arch' /etc/os-release; then
+        hint="sudo pacman -S bun"
+      else
+        hint="install Node.js/npm from your distro, or install bun from https://bun.sh"
+      fi
+      ;;
+    *) hint="install bun or npm for this system" ;;
+  esac
+  die "need bun or npm to package the Electron shell. Install one: $hint"
 fi
 
 if [ ! -d ./node_modules/electron-builder ] || [ ! -d ./node_modules/electron ]; then

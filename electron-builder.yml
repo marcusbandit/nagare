@@ -67,3 +67,14 @@ linux:
     entry:
       Keywords: youtube;video;download;yt-dlp;
       StartupWMClass: nagare-app
+
+# Native packages should pull in what the app can reasonably get from the
+# distro. uv is packaged on Arch; on Ubuntu/Debian the runtime message points to
+# Astral's installer because the uv package is not reliably present everywhere.
+deb:
+  depends:
+    - ffmpeg
+pacman:
+  depends:
+    - ffmpeg
+    - uv

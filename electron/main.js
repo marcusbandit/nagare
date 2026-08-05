@@ -71,6 +71,69 @@ function findTool(tool, override) {
   return executable(override || "") || onPath(tool) || fromLoginShell(tool);
 }
 
+function linuxFlavor() {
+  if (process.platform !== "linux") return null;
+  let osRelease = "";
+  try {
+    osRelease = fs.readFileSync("/etc/os-release", "utf8");
+  } catch {
+    // Some AppImage/container launches do not expose the usual release file.
+  }
+  const value = (key) => {
+    const hit = osRelease.match(new RegExp(`^${key}=(.*)$`, "m"));
+    return hit ? hit[1].replace(/^"|"$/g, "").toLowerCase() : "";
+  };
+  const ids = `${value("ID")} ${value("ID_LIKE")}`;
+  if (ids.includes("arch")) return "arch";
+  if (ids.includes("debian") || ids.includes("ubuntu")) return "debian";
+  if (ids.includes("fedora") || ids.includes("rhel") || ids.includes("centos")) return "fedora";
+  return "linux";
+}
+
+function installHint(tool) {
+  const flavor = linuxFlavor();
+  if (tool === "uv") {
+    if (process.platform === "darwin") return "brew install uv";
+    if (flavor === "arch") return "sudo pacman -S uv";
+    if (flavor === "debian") return "curl -LsSf https://astral.sh/uv/install.sh | sh";
+    if (flavor === "fedora") return "sudo dnf install uv  # or: curl -LsSf https://astral.sh/uv/install.sh | sh";
+    return "curl -LsSf https://astral.sh/uv/install.sh | sh";
+  }
+  if (tool === "ffmpeg") {
+    if (process.platform === "darwin") return "brew install ffmpeg";
+    if (flavor === "arch") return "sudo pacman -S ffmpeg";
+    if (flavor === "debian") return "sudo apt install ffmpeg";
+    if (flavor === "fedora") return "sudo dnf install ffmpeg";
+    return "install ffmpeg with this system's package manager";
+  }
+  return `install ${tool} with this system's package manager`;
+}
+
+function missingToolMessage(tool, envVar, purpose) {
+  return `${tool} is not installed, or is somewhere nagare cannot see.
+
+` +
+    `${purpose}
+
+` +
+    `This looks like ${process.platform}${process.platform === "linux" ? ` (${linuxFlavor()})` : ""} on ${process.arch}. Install it with:
+
+` +
+    `    ${installHint(tool)}
+
+` +
+    `then start nagare again. If it is installed somewhere unusual, point at it with ${envVar}.`;
+}
+
+function externalURL(url) {
+  try {
+    const parsed = new URL(url);
+    return ["http:", "https:", "mailto:"].includes(parsed.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 // Hardware video decode on Linux. YouTube hands back AV1/VP9 for the "best"
 // ladder, and software-decoding 4K AV1 will melt a laptop. Harmless where the
 // platform decoder is missing: Chromium just falls back to software.
@@ -109,18 +172,15 @@ function freePort() {
 function startServer(port) {
   const uv = findTool("uv", process.env.NAGARE_UV);
   if (!uv) {
-    throw new Error(
-      "uv is not installed, or is somewhere nagare cannot see.\n\n" +
-        "uv runs the python side of nagare. Install it with:\n\n" +
-        "    curl -LsSf https://astral.sh/uv/install.sh | sh\n\n" +
-        "then start nagare again. If it is installed somewhere unusual, point at\n" +
-        "it with the NAGARE_UV environment variable.",
-    );
+    throw new Error(missingToolMessage("uv", "NAGARE_UV", "uv runs the python side of nagare."));
   }
   // ffmpeg is the python side's business, but it looks for it on PATH, and PATH
   // is exactly what a double-clicked app does not have. Hand over a real one.
   const ffmpeg = findTool("ffmpeg", process.env.NAGARE_FFMPEG);
-  const dirs = [path.dirname(uv), ...(ffmpeg ? [path.dirname(ffmpeg)] : []), ...TOOL_DIRS];
+  if (!ffmpeg) {
+    throw new Error(missingToolMessage("ffmpeg", "NAGARE_FFMPEG", "ffmpeg downloads and remuxes the videos nagare plays."));
+  }
+  const dirs = [path.dirname(uv), path.dirname(ffmpeg), ...TOOL_DIRS];
   const searchPath = [...new Set(dirs)].join(path.delimiter);
 
   const args = ["run", "--project", PROJECT_DIR];
@@ -206,13 +266,15 @@ function createWindow() {
   // Anything that is not our own server opens in the real browser, so a stray
   // link can never navigate the app shell away from itself.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    const target = externalURL(url);
+    if (target) shell.openExternal(target);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
     if (!url.startsWith(`http://127.0.0.1:${serverPort}`)) {
       event.preventDefault();
-      shell.openExternal(url);
+      const target = externalURL(url);
+      if (target) shell.openExternal(target);
     }
   });
 
