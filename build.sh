@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Wrap nagare as a desktop app you can double click.
 #
-#   ./build.sh                  this machine's format
-#   ./build.sh macos            Build/macOS/Nagare.app
-#   ./build.sh ubuntu           Build/Ubuntu/Nagare.AppImage
-#   ./build.sh all              both, where the host can manage it
+#   ./build.sh                   this machine's format
+#   ./build.sh macos             Build/macOS/Nagare.app
+#   ./build.sh ubuntu            Build/Ubuntu/Nagare.AppImage + .deb
+#   ./build.sh arch              Build/Arch/Nagare.AppImage + .pkg.tar.zst
+#   ./build.sh all               everything the host can manage
 #   ./build.sh macos --universal a .app that also runs on Intel macs
+#   ./build.sh arch --arm64      linux artifacts for an arm machine
 #
 # Nothing is installed anywhere: the artifacts land in Build/ and moving them is
 # your business. Drag the .app to /Applications if you want it there.
@@ -39,23 +41,32 @@ LINUX_ARCH="x64"
 for arg in "$@"; do
   case "$arg" in
     macos | mac | darwin) TARGETS+=("macos") ;;
-    ubuntu | linux) TARGETS+=("ubuntu") ;;
-    all) TARGETS+=("macos" "ubuntu") ;;
+    ubuntu | debian | linux) TARGETS+=("ubuntu") ;;
+    arch | archlinux) TARGETS+=("arch") ;;
+    all) TARGETS+=("macos" "ubuntu" "arch") ;;
     --universal) UNIVERSAL=1 ;;
     --arm64) LINUX_ARCH="arm64" ;;
     -h | --help)
-      sed -n '2,12p' "$SELF" | sed 's/^# \{0,1\}//'
+      sed -n '2,13p' "$SELF" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
-    *) die "unknown argument: $arg  (try: macos, ubuntu, all)" ;;
+    *) die "unknown argument: $arg  (try: macos, ubuntu, arch, all)" ;;
   esac
 done
 
 if [ ${#TARGETS[@]} -eq 0 ]; then
   case "$(uname -s)" in
     Darwin) TARGETS=("macos") ;;
-    Linux) TARGETS=("ubuntu") ;;
-    *) die "no idea what to build on $(uname -s). Ask for macos or ubuntu." ;;
+    # Ask the distro what it is rather than guessing: an AppImage runs anywhere,
+    # but only one of these two packages is any use on the machine at hand.
+    Linux)
+      if [ -f /etc/os-release ] && grep -qiE '^ID(_LIKE)?=.*arch' /etc/os-release; then
+        TARGETS=("arch")
+      else
+        TARGETS=("ubuntu")
+      fi
+      ;;
+    *) die "no idea what to build on $(uname -s). Ask for macos, ubuntu or arch." ;;
   esac
 fi
 
@@ -135,49 +146,75 @@ build_macos() {
   fi
 }
 
-build_ubuntu() {
-  local out="$STAGE/ubuntu"
+# An arch package is a tar under some compression, and the name is supposed to
+# say which: electron-builder hands back a ".pacman" whatever is inside it, so
+# read the magic bytes rather than promise zstd and deliver xz.
+pkg_extension() {
+  case "$(head -c 4 "$1" | od -An -tx1 | tr -d ' \n')" in
+    28b52ffd*) echo "pkg.tar.zst" ;;
+    fd377a58*) echo "pkg.tar.xz" ;;
+    1f8b*) echo "pkg.tar.gz" ;;
+    *) echo "pkg.tar" ;;
+  esac
+}
+
+# One linux build, told which distro it is dressing up for. The AppImage is the
+# same everywhere, so only the native package differs: a deb for Ubuntu, a pacman
+# package for Arch.
+#
+#   build_linux <label> <folder> <electron-builder target>...
+build_linux() {
+  local label="$1" folder="$2"
+  shift 2
+  local out="$STAGE/$label"
   mkdir -p "$out"
   local suffix=""
   [ "$LINUX_ARCH" = "arm64" ] && suffix="-arm64"
-  say "packaging for ubuntu ($LINUX_ARCH)..."
-  if ! "${RUN[@]}" electron-builder --linux "--$LINUX_ARCH" \
+  say "packaging for $label ($LINUX_ARCH): $*"
+  if ! "${RUN[@]}" electron-builder --linux "$@" "--$LINUX_ARCH" \
     --config electron-builder.yml "-c.directories.output=$out"; then
     [ "$(uname -s)" = "Linux" ] &&
-      die "the linux build failed; see the output above."
-    die "the linux build failed; see the output above. If what it is missing is
-       linux tooling rather than something in this repo, build on Ubuntu or in
+      die "the $label build failed; see the output above."
+    die "the $label build failed; see the output above. If what it is missing is
+       linux tooling rather than something in this repo, build on linux or in
        the electron-builder docker image, which carries the toolchain:
 
          docker run --rm -v \"\$PWD\":/project -w /project \\
-           electronuserland/builder:latest ./build.sh ubuntu"
+           electronuserland/builder:latest ./build.sh $label"
   fi
 
-  mkdir -p "$BUILD/Ubuntu"
-  local image deb
-  image="$(find "$out" -maxdepth 1 -name "*.AppImage" -print -quit)"
-  [ -n "$image" ] || die "electron-builder produced no AppImage; see the output above."
-  rm -f "$BUILD/Ubuntu/Nagare$suffix.AppImage"
-  cp "$image" "$BUILD/Ubuntu/Nagare$suffix.AppImage"
-  chmod +x "$BUILD/Ubuntu/Nagare$suffix.AppImage"
-  say "done: Build/Ubuntu/Nagare$suffix.AppImage"
-
-  # The deb is best effort: building one from a mac works today but is not
-  # something to fail the whole run over, since the AppImage is the portable one.
-  deb="$(find "$out" -maxdepth 1 -name "*.deb" -print -quit)"
-  if [ -n "$deb" ]; then
-    rm -f "$BUILD/Ubuntu/Nagare$suffix.deb"
-    cp "$deb" "$BUILD/Ubuntu/Nagare$suffix.deb"
-    say "done: Build/Ubuntu/Nagare$suffix.deb"
-  else
-    say "no .deb was produced (the AppImage is there); build on Ubuntu to get one."
-  fi
+  mkdir -p "$BUILD/$folder"
+  local built=0 found
+  # Deliver whatever the requested targets produced, under a plain name. The
+  # native package is best effort: cross-building one is not always possible, and
+  # the AppImage that runs on any distro is reason enough not to fail the run.
+  local name
+  for pattern in "*.AppImage" "*.deb" "*.pacman" "*.pkg.tar.zst" "*.pkg.tar.xz"; do
+    found="$(find "$out" -maxdepth 1 -name "$pattern" -print -quit)"
+    [ -n "$found" ] || continue
+    case "$found" in
+      *.AppImage) name="Nagare$suffix.AppImage" ;;
+      *.deb) name="Nagare$suffix.deb" ;;
+      # electron-builder calls a pacman package ".pacman"; arch calls the same
+      # bytes .pkg.tar.<compression>, which is the name pacman -U expects.
+      *) name="Nagare$suffix.$(pkg_extension "$found")" ;;
+    esac
+    rm -f "$BUILD/$folder/$name"
+    cp "$found" "$BUILD/$folder/$name"
+    case "$name" in *.AppImage) chmod +x "$BUILD/$folder/$name" ;; esac
+    say "done: Build/$folder/$name"
+    built=$((built + 1))
+  done
+  [ "$built" -gt 0 ] ||
+    die "the $label build produced nothing; see the output above."
 }
 
 for target in "${TARGETS[@]}"; do
   case "$target" in
     macos) build_macos ;;
-    ubuntu) build_ubuntu ;;
+    # An AppImage to double click, plus the package the distro would rather have.
+    ubuntu) build_linux ubuntu Ubuntu AppImage deb ;;
+    arch) build_linux arch Arch AppImage pacman ;;
   esac
 done
 

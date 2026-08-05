@@ -56,6 +56,7 @@ ln -s "$PWD/nagare-app" ~/.local/bin/nagare-app
 ./build.sh               # this machine's format
 ./build.sh macos         # Build/macOS/Nagare.app
 ./build.sh ubuntu        # Build/Ubuntu/Nagare.AppImage and Nagare.deb
+./build.sh arch          # Build/Arch/Nagare.AppImage and Nagare.pkg.tar.xz
 ./build.sh all
 ```
 
@@ -63,6 +64,12 @@ Everything lands in `Build/` and nothing is installed anywhere: move the `.app`
 to `/Applications` yourself if that is where you want it. `--universal` builds a
 `.app` that also runs on Intel macs; `--arm64` builds the linux artifacts for an
 arm machine instead of x86_64.
+
+Each linux folder holds the same AppImage — one binary that runs on any distro —
+next to the package that distro would rather have: `apt install ./Nagare.deb` on
+Ubuntu, `pacman -U Nagare.pkg.tar.xz` on Arch. Both install to `/opt/Nagare`,
+add a launcher entry, and put the app on your PATH as `nagare-app`, which leaves
+the `nagare` command to the python CLI.
 
 The python side is not compiled in. It ships as source next to the app and runs
 through uv exactly as the checkout does, so **the machine still needs uv and

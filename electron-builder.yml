@@ -41,13 +41,13 @@ mac:
   identity: null
 
 linux:
-  # AppImage to double click without installing anything; deb for the machines
-  # that would rather have a real package and a menu entry. An AppImage needs
-  # libfuse2, which Ubuntu has not shipped by default since 22.04, so the deb is
+  # build.sh picks the targets per distro: an AppImage everywhere, plus deb for
+  # Ubuntu or a pacman package for Arch. This list is only what a bare
+  # `electron-builder --linux` would fall back to. An AppImage needs libfuse2,
+  # which Ubuntu has not shipped by default since 22.04, so the native package is
   # the one that always works out of the box.
   target:
     - AppImage
-    - deb
   maintainer: Marcus Rosado
   category: AudioVideo
   icon: electron/icon.png
@@ -59,7 +59,11 @@ linux:
     A local YouTube frontend built on yt-dlp: search, queue, and watch a video
     while it is still downloading. Nothing is uploaded anywhere and the library
     is a folder of plain mp4 files.
+  # Not "nagare": a deb or pacman package links its executable into /usr/bin, and
+  # that name already belongs to the python CLI (`uv tool install .`). This is the
+  # name the checkout's own launcher uses.
+  executableName: nagare-app
   desktop:
     entry:
       Keywords: youtube;video;download;yt-dlp;
-      StartupWMClass: nagare
+      StartupWMClass: nagare-app

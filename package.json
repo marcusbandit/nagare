@@ -13,5 +13,7 @@
     "electron-builder": "^26.0.0"
   },
   "author": "Marcus Rosado",
-  "desktopName": "nagare.desktop"
+  "desktopName": "nagare.desktop",
+  "license": "MIT",
+  "homepage": "https://github.com/marcusbandit/nagare"
 }
