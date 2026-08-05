@@ -6,11 +6,70 @@
 // app rather than outliving it.
 
 const { app, BrowserWindow, shell, ipcMain, dialog } = require("electron");
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 const net = require("node:net");
+const os = require("node:os");
 const path = require("node:path");
 
-const PROJECT_DIR = path.resolve(__dirname, "..");
+// Packaged, the python side ships beside the asar in Resources rather than in a
+// checkout, and Resources is where the pyproject and the web assets live too.
+const PROJECT_DIR = app.isPackaged ? process.resourcesPath : path.resolve(__dirname, "..");
+
+// A double-clicked app inherits almost nothing: launchd hands it
+// /usr/bin:/bin:/usr/sbin:/sbin, and a .desktop launch is not much better, so uv
+// and ffmpeg are invisible even when they are installed. Look where they
+// actually get installed rather than trusting PATH.
+const TOOL_DIRS = [
+  path.join(os.homedir(), ".local", "bin"),
+  path.join(os.homedir(), ".cargo", "bin"),
+  path.join(os.homedir(), "bin"),
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/bin",
+  "/snap/bin",
+  "/var/lib/flatpak/exports/bin",
+];
+
+function executable(file) {
+  try {
+    fs.accessSync(file, fs.constants.X_OK);
+    return fs.statSync(file).isFile() ? file : null;
+  } catch {
+    return null;
+  }
+}
+
+function onPath(tool) {
+  const dirs = [...(process.env.PATH || "").split(path.delimiter), ...TOOL_DIRS];
+  for (const dir of dirs) {
+    const hit = dir && executable(path.join(dir, tool));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Last resort: ask the login shell. It knows about mise, asdf, nix, pyenv and
+    every other thing that installs itself into a shell profile and nowhere a
+    fixed list would find it. */
+function fromLoginShell(tool) {
+  if (!process.env.SHELL) return null;
+  try {
+    const out = execFileSync(process.env.SHELL, ["-lc", `command -v ${tool}`], {
+      encoding: "utf8",
+      timeout: 8000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return executable(out.trim().split("\n").pop() || "");
+  } catch {
+    return null;
+  }
+}
+
+function findTool(tool, override) {
+  return executable(override || "") || onPath(tool) || fromLoginShell(tool);
+}
 
 // Hardware video decode on Linux. YouTube hands back AV1/VP9 for the "best"
 // ladder, and software-decoding 4K AV1 will melt a laptop. Harmless where the
@@ -48,21 +107,45 @@ function freePort() {
 }
 
 function startServer(port) {
-  const child = spawn(
-    "uv",
-    ["run", "--project", PROJECT_DIR, "python", "-m", "nagare.server"],
-    {
-      cwd: PROJECT_DIR,
-      env: {
-        ...process.env,
-        NAGARE_PORT: String(port),
-        NAGARE_HOST: "127.0.0.1",
-        NAGARE_OPEN: "0",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    },
-  );
+  const uv = findTool("uv", process.env.NAGARE_UV);
+  if (!uv) {
+    throw new Error(
+      "uv is not installed, or is somewhere nagare cannot see.\n\n" +
+        "uv runs the python side of nagare. Install it with:\n\n" +
+        "    curl -LsSf https://astral.sh/uv/install.sh | sh\n\n" +
+        "then start nagare again. If it is installed somewhere unusual, point at\n" +
+        "it with the NAGARE_UV environment variable.",
+    );
+  }
+  // ffmpeg is the python side's business, but it looks for it on PATH, and PATH
+  // is exactly what a double-clicked app does not have. Hand over a real one.
+  const ffmpeg = findTool("ffmpeg", process.env.NAGARE_FFMPEG);
+  const dirs = [path.dirname(uv), ...(ffmpeg ? [path.dirname(ffmpeg)] : []), ...TOOL_DIRS];
+  const searchPath = [...new Set(dirs)].join(path.delimiter);
+
+  const args = ["run", "--project", PROJECT_DIR];
+  // Packaged, the project lives inside the app bundle: read-only, and not the
+  // place for a virtualenv. Keep the environment in the user's own data dir and
+  // never let uv try to rewrite the lockfile it shipped with.
+  const env = {
+    ...process.env,
+    PATH: `${searchPath}${path.delimiter}${process.env.PATH || ""}`,
+    NAGARE_PORT: String(port),
+    NAGARE_HOST: "127.0.0.1",
+    NAGARE_OPEN: "0",
+  };
+  if (app.isPackaged) {
+    args.push("--frozen");
+    env.UV_PROJECT_ENVIRONMENT = path.join(app.getPath("userData"), "venv");
+  }
+  args.push("python", "-m", "nagare.server");
+
+  const child = spawn(uv, args, {
+    cwd: PROJECT_DIR,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: false,
+  });
   const keep = (buf) => {
     serverLog.push(buf.toString());
     if (serverLog.length > 200) serverLog.shift();
@@ -142,7 +225,9 @@ app.whenReady().then(async () => {
     server = startServer(serverPort);
     createWindow();
     win.loadFile(path.join(__dirname, "loading.html"));
-    await waitForServer(serverPort);
+    // The first packaged launch builds the python environment, and may fetch an
+    // interpreter to build it with. That is a download, not a hang.
+    await waitForServer(serverPort, app.isPackaged ? 300000 : 60000);
     await win.loadURL(`http://127.0.0.1:${serverPort}/`);
   } catch (err) {
     dialog.showErrorBox("nagare could not start", String(err && err.message ? err.message : err));

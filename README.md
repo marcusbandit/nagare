@@ -50,6 +50,35 @@ straight up. Symlink it onto your PATH if you want it as a command:
 ln -s "$PWD/nagare-app" ~/.local/bin/nagare-app
 ```
 
+### Optional: build an app you can double click
+
+```sh
+./build.sh               # this machine's format
+./build.sh macos         # Build/macOS/Nagare.app
+./build.sh ubuntu        # Build/Ubuntu/Nagare.AppImage and Nagare.deb
+./build.sh all
+```
+
+Everything lands in `Build/` and nothing is installed anywhere: move the `.app`
+to `/Applications` yourself if that is where you want it. `--universal` builds a
+`.app` that also runs on Intel macs; `--arm64` builds the linux artifacts for an
+arm machine instead of x86_64.
+
+The python side is not compiled in. It ships as source next to the app and runs
+through uv exactly as the checkout does, so **the machine still needs uv and
+ffmpeg** — the same two things `uv run nagare` needs. The app finds them itself
+rather than trusting the PATH a double-clicked app is given, which is almost
+none. The first launch builds the python environment in the app's own data folder
+and takes a minute; every launch after that is immediate.
+
+On Ubuntu, prefer the `.deb` if double-clicking the AppImage complains about
+`libfuse.so.2`: 22.04 and later stopped shipping the FUSE 2 runtime AppImages
+need, and the deb has no such dependency.
+
+macOS builds are signed ad-hoc, because signing properly needs a developer
+certificate. Your own machine will run it; another mac will want a right-click →
+**Open** the first time.
+
 ### Optional: install as a command
 
 ```sh
