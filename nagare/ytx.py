@@ -243,12 +243,15 @@ def normalise_playlist(entry: dict) -> dict:
     url = entry.get("url") or entry.get("webpage_url") or ""
     if not url and ident:
         url = f"https://www.youtube.com/playlist?list={ident}"
-    # No uploader: for a playlist yt-dlp fills channel/uploader with the label of
-    # the link it scraped ("View full playlist"), which is not a name.
+    # When a playlist entry has no author attached, yt-dlp puts the label of the
+    # link it scraped in channel/uploader ("View full playlist"), which is not a
+    # name. A real author comes with a channel url, so let the url vouch for it.
+    owned = bool(entry.get("channel_url") or entry.get("uploader_url"))
     return {
         "id": ident,
         "title": entry.get("title") or "playlist",
         "url": url,
+        "uploader": (entry.get("channel") or entry.get("uploader") or "") if owned else "",
         "count": entry.get("playlist_count") or 0,
         "thumbnail": _best_thumb(entry),
     }
