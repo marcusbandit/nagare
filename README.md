@@ -3,12 +3,97 @@
 A local YouTube frontend built on yt-dlp. Search, queue, and **watch a video while
 it is still downloading**.
 
-```
-nagare            # starts the server and opens a browser
-nagare --help
+Nothing is uploaded anywhere. The server binds to `127.0.0.1`, the library is a
+folder of plain mp4 files, and there is no account, no telemetry, and no database.
+
+## Install
+
+You need two things: **ffmpeg** (does the muxing) and **[uv](https://docs.astral.sh/uv/)**
+(runs the Python side and fetches its own interpreter, so no system Python setup).
+
+```sh
+# 1. ffmpeg
+sudo pacman -S ffmpeg        # Arch
+sudo apt install ffmpeg      # Debian / Ubuntu
+sudo dnf install ffmpeg      # Fedora
+brew install ffmpeg          # macOS
+
+# 2. uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 3. nagare
+git clone https://github.com/marcusbandit/nagare
+cd nagare
+uv run nagare
 ```
 
-Library lives in `~/Videos/nagare` (`media/` holds the finished files).
+That last command creates the environment, installs the dependencies, starts the
+server and opens your browser. It takes a few seconds the first time and is
+instant afterwards. There is no build step and no separate install command.
+
+If something is missing, nagare says which binary and the exact command for your
+distro instead of failing later mid-download.
+
+### Optional: the desktop app
+
+Same UI in its own window, with hardware video decode, instead of a browser tab.
+Needs [bun](https://bun.sh) or npm for the Electron shell:
+
+```sh
+./nagare-app
+```
+
+The first run installs Electron (~100 MB) and every run after that starts
+straight up. Symlink it onto your PATH if you want it as a command:
+
+```sh
+ln -s "$PWD/nagare-app" ~/.local/bin/nagare-app
+```
+
+### Optional: install as a command
+
+```sh
+uv tool install .        # provides `nagare` on your PATH, no checkout needed
+```
+
+## Using it
+
+Search in the box, click a result to queue it. It becomes watchable within a few
+seconds while the rest downloads in the background. Finished videos live in
+`~/Videos/nagare/media` as ordinary mp4 files you can move, copy, or play in
+anything.
+
+| Env var              | Default             | What                                  |
+| -------------------- | ------------------- | ------------------------------------- |
+| `NAGARE_HOME`        | `~/Videos/nagare`   | Where the library lives                |
+| `NAGARE_PORT`        | `8737`              | Server port                            |
+| `NAGARE_HOST`        | `127.0.0.1`         | Bind address                           |
+| `NAGARE_QUALITY`     | `1080`              | `2160`/`1440`/`1080`/`720`/`best`/`audio` |
+| `NAGARE_CONCURRENCY` | `2`                 | Simultaneous downloads                 |
+| `NAGARE_OPEN`        | `1`                 | Open a browser on start; `0` to skip   |
+
+```sh
+NAGARE_QUALITY=720 NAGARE_HOME=/mnt/media/yt uv run nagare
+```
+
+Requires Python 3.11+, though uv handles that for you.
+
+## Troubleshooting
+
+**`ffmpeg not found`** - install it (see above); `ffmpeg` and `ffprobe` both come
+from the same package and both are needed.
+
+**`address already in use`** - something else holds 8737. Use
+`NAGARE_PORT=9000 uv run nagare`.
+
+**A download fails or stalls at 0%** - usually a stale yt-dlp against a YouTube
+change. `uv lock --upgrade-package yt-dlp && uv run nagare`.
+
+**Video plays but has no sound, or vice versa** - the `best` ladder can hand back
+codecs your browser will not decode. Use the default `1080`, which pins H.264/AAC.
+
+**Interrupted jobs do not resume.** A restart discards them and their segments;
+queue the video again.
 
 ## How watching-while-downloading works
 
@@ -50,17 +135,19 @@ Two details that are easy to get wrong and are handled here:
 | Path                | What                                                     |
 | ------------------- | -------------------------------------------------------- |
 | `nagare/config.py`  | Paths, port, quality ladders. All `NAGARE_*` env vars.    |
+| `nagare/doctor.py`  | Startup preflight: required binaries and install hints.   |
 | `nagare/ytx.py`     | yt-dlp python API: search, URL/playlist resolve, posters. |
 | `nagare/jobs.py`    | The download pipeline and job state machine.              |
 | `nagare/server.py`  | FastAPI: API, SSE progress, byte-range media serving.     |
+| `electron/main.js`  | Desktop shell: spawns the server, owns its lifetime.      |
 | `web/squircle.js`   | The G2 corner primitive. Every rounded shape routes here. |
 | `web/app.js`        | UI, SSE client, hls.js player.                            |
 
 ## Design
 
-Greensteel, per `~/.config/hypr/DESIGN.md`: Monocraft, backgrounds only from
-void/abyss/dark, two font sizes (18/27), G2 corners via `clip-path` rather than
-`border-radius`, and exponentially smoothed progress bars.
+Greensteel: Monocraft, backgrounds only from void/abyss/dark, two font sizes
+(18/27), G2 corners via `clip-path` rather than `border-radius`, and
+exponentially smoothed progress bars.
 
 ## Notes
 
@@ -69,4 +156,3 @@ void/abyss/dark, two font sizes (18/27), G2 corners via `clip-path` rather than
   other players may not.
 - `mpv` buttons play the growing HLS playlist directly, so the same
   watch-while-downloading works outside the browser.
-- Interrupted jobs are not resumable; a restart discards them and their segments.

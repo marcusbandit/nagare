@@ -1,4 +1,39 @@
 #!/usr/bin/env bash
 # Launch nagare as a desktop app (Electron shell + its own python server).
-cd /home/bandit/Projects/WebApps/nagare
+#
+# Resolves its own location, so the checkout can live anywhere and the script
+# still works through a symlink on PATH or a .desktop entry.
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  TARGET="$(readlink "$SELF")"
+  case "$TARGET" in
+    /*) SELF="$TARGET" ;;
+    *) SELF="$(dirname "$SELF")/$TARGET" ;;
+  esac
+done
+DIR="$(cd "$(dirname "$SELF")" && pwd)"
+cd "$DIR"
+
+die() { printf 'nagare: %s\n' "$1" >&2; exit 1; }
+
+command -v uv >/dev/null 2>&1 ||
+  die "uv is required. Install it with:  curl -LsSf https://astral.sh/uv/install.sh | sh"
+command -v ffmpeg >/dev/null 2>&1 ||
+  die "ffmpeg is required (it does the muxing). Install it with your package manager."
+
+# Electron is a dev dependency, so a fresh clone has no node_modules yet. Fetch
+# it once rather than failing with a bare "no such file".
+if [ ! -x ./node_modules/.bin/electron ]; then
+  printf 'nagare: installing the desktop shell (one time)...\n' >&2
+  if command -v bun >/dev/null 2>&1; then
+    bun install
+  elif command -v npm >/dev/null 2>&1; then
+    npm install
+  else
+    die "need bun or npm to install the Electron shell, or run the browser version:  uv run nagare"
+  fi
+fi
+
 exec ./node_modules/.bin/electron . --ozone-platform-hint=auto "$@"

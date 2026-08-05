@@ -7,14 +7,17 @@ import contextlib
 import json
 import mimetypes
 import os
+import shutil
 import subprocess
+import sys
+import webbrowser
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, extras, subs, ytx
+from . import config, doctor, extras, subs, ytx
 from .jobs import manager
 
 config.ensure_dirs()
@@ -375,20 +378,35 @@ async def index() -> HTMLResponse:
 app.mount("/static", StaticFiles(directory=str(config.WEB)), name="static")
 
 
-def main() -> None:
-    import uvicorn
-
-    config.ensure_dirs()
-    url = f"http://{config.HOST}:{config.PORT}"
-    print(f"nagare -> {url}   (library: {config.ROOT})")
-    if os.environ.get("NAGARE_OPEN", "1") == "1":
-        with contextlib.suppress(Exception):
+def _open_browser(url: str) -> None:
+    """Open the UI in the desktop browser. Best effort; never fatal."""
+    with contextlib.suppress(Exception):
+        # xdg-open (and `open` on macOS) respects the desktop's default-browser
+        # setting, which the stdlib's webbrowser module does not always pick up.
+        # Both take a detached child; everywhere else webbrowser is the answer.
+        opener = {"darwin": "open"}.get(sys.platform, "xdg-open")
+        if sys.platform != "win32" and shutil.which(opener):
             subprocess.Popen(  # noqa: S603
-                ["xdg-open", url],
+                [opener, url],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            return
+        webbrowser.open(url)
+
+
+def main() -> None:
+    import uvicorn
+
+    doctor.check()
+    config.ensure_dirs()
+    url = f"http://{config.HOST}:{config.PORT}"
+    # flush: stdout is block-buffered when piped (a launcher, a log file), and
+    # this line is the only thing telling you where the server is.
+    print(f"nagare -> {url}   (library: {config.ROOT})", flush=True)
+    if os.environ.get("NAGARE_OPEN", "1") == "1":
+        _open_browser(url)
     uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="warning")
 
 
