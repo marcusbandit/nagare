@@ -137,6 +137,10 @@ class JobManager:
         job_id = video.get("id") or ""
         if not job_id:
             raise ValueError("video has no id")
+        # A channel id or a playlist id here would hand yt-dlp a whole channel to
+        # download. Only a video id is a video.
+        if not ytx.VIDEO_ID.fullmatch(job_id):
+            raise ValueError(f"{job_id} is not a video")
 
         existing = self.jobs.get(job_id)
         if existing and existing.state not in TERMINAL:

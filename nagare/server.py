@@ -46,6 +46,12 @@ async def api_config() -> dict:
     }
 
 
+# What a search may be narrowed to. YouTube's results page can pin the kind of
+# thing it returns, which is what makes "find me the channel" a search of its own
+# rather than a filter over a mixed list.
+_ONLY = {"videos": "video", "channels": "channel", "playlists": "playlist"}
+
+
 @app.get("/api/search")
 async def api_search(
     q: str,
@@ -53,6 +59,7 @@ async def api_search(
     sort: str = "relevance",
     date: str = "any",
     duration: str = "any",
+    only: str = "all",
 ) -> JSONResponse:
     q = q.strip()
     if not q:
@@ -64,20 +71,50 @@ async def api_search(
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(400, str(exc)) from exc
         return JSONResponse({"results": resolved["entries"], "kind": resolved["type"],
-                             "title": resolved["title"]})
+                             "title": resolved["title"],
+                             "channel_id": resolved.get("channel_id", ""),
+                             "channels": [], "playlists": []})
+    capped = min(max(limit, 1), 50)
     try:
         filtered = sort != "relevance" or date != "any" or duration != "any"
-        if filtered:
+        if only == "channels":
+            # A channel search is a different extraction: channels carry no
+            # duration or upload date, so the other filters have nothing to say.
+            found = {
+                "videos": [],
+                "playlists": [],
+                "channels": await ytx.search_channels(
+                    extras.search_url(q, result_type="channel"), min(capped, 30)
+                ),
+            }
+        elif only in _ONLY or filtered:
             # ytsearch: has no filter syntax, so go through a real results page
             # with the `sp` protobuf instead.
-            results = await ytx.search_filtered(
-                extras.search_url(q, sort, date, duration), min(max(limit, 1), 50)
+            found = await ytx.search_filtered(
+                extras.search_url(q, sort, date, duration, _ONLY.get(only, "video")),
+                capped,
             )
+            # Pinning the kind is a request, not a promise: a results page pinned
+            # to videos still slips a channel in. Asking for one kind means one.
+            if only in _ONLY:
+                keep = {"videos", "channels", "playlists"} - {only}
+                found = {**found, **{k: [] for k in keep}}
         else:
-            results = await ytx.search(q, min(max(limit, 1), 50))
+            found = await ytx.search(q, capped)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, str(exc)) from exc
-    return JSONResponse({"results": results, "kind": "search", "title": q})
+    # Videos are the grid; channels and playlists are rows above it. They are kept
+    # apart here because they are not interchangeable: a channel has no duration,
+    # nothing to play, and its id is not a video id.
+    return JSONResponse(
+        {
+            "results": found["videos"],
+            "channels": found["channels"],
+            "playlists": found["playlists"],
+            "kind": "search",
+            "title": q,
+        }
+    )
 
 
 @app.get("/api/auth/status")

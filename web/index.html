@@ -12,6 +12,10 @@
   </head>
   <body>
     <header class="bar" id="bar">
+      <div class="nav-arrows">
+        <button class="btn ghost caret" id="nav-back" data-squircle data-radius="10" title="Back (alt+←)" disabled>&lt;</button>
+        <button class="btn ghost caret" id="nav-fwd" data-squircle data-radius="10" title="Forward (alt+→)" disabled>&gt;</button>
+      </div>
       <button class="mark" id="home" title="home">流 nagare</button>
 
       <form class="search" id="search-form" autocomplete="off">
@@ -53,6 +57,9 @@
       <div id="browse-body" class="hidden">
         <div class="viewhead">
           <span id="browse-title" class="title-lg">results</span>
+          <!-- What a search should come back with. Filled in by app.js so the
+               chips carry the current choice. -->
+          <div class="seg hidden" id="search-only" role="group" aria-label="search for"></div>
           <span class="spacer"></span>
           <span id="status" class="dim"></span>
           <button class="btn ghost hidden" id="grab-all" data-squircle data-radius="12"></button>
@@ -98,6 +105,11 @@
           </div>
           <button class="btn primary" id="chan-bar-sub" data-squircle data-radius="12">subscribe</button>
         </div>
+
+        <!-- Search results that are not videos. A channel or a playlist has no
+             duration and nothing to play, so it gets a row that opens it rather
+             than a card in the grid pretending it is watchable. -->
+        <div id="hit-rows" class="hit-rows hidden"></div>
 
         <div id="grid" class="grid"></div>
         <div id="empty" class="empty dim"></div>
