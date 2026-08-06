@@ -71,10 +71,44 @@ linux:
 # Native packages should pull in what the app can reasonably get from the
 # distro. uv is packaged on Arch; on Ubuntu/Debian the runtime message points to
 # Astral's installer because the uv package is not reliably present everywhere.
+#
+# Setting `depends` REPLACES electron-builder's own list rather than adding to
+# it, so everything Electron itself links against has to be repeated here. Drop
+# one and the package installs happily onto a machine that cannot start it, with
+# the package manager none the wiser. To refresh the copied part after an
+# electron or electron-builder upgrade: comment this block out, ./build.sh
+# ubuntu arch, and read `Depends:` out of the deb's control file and `depend =`
+# out of .PKGINFO in the pacman package.
 deb:
   depends:
+    # electron-builder's list, verbatim.
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    # ours: the muxer every download runs through.
     - ffmpeg
 pacman:
   depends:
+    # electron-builder's list, verbatim. ffmpeg is already one of them here.
+    - c-ares
     - ffmpeg
+    - gtk3
+    - http-parser
+    - libevent
+    - libvpx
+    - libxslt
+    - libxss
+    - minizip
+    - nss
+    - re2
+    - snappy
+    - libnotify
+    - libappindicator-gtk3
+    # ours: uv runs the python side, and arch has it in the repos.
     - uv
