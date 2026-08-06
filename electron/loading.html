@@ -13,7 +13,12 @@
   .bar i { display: block; height: 100%; width: 40%; background: linear-gradient(90deg,#3FBF8F,#8CFFC0,#F7FDFA);
            animation: sweep 1.1s ease-in-out infinite; }
   @keyframes sweep { 0% { transform: translateX(-110%);} 100% { transform: translateX(260%);} }
+  /* A first launch installs the python side, which is a download rather than a
+     hang. Say so, but only once it has gone on long enough to worry about. */
+  .slow { color: #33493F; opacity: 0; animation: tell 1s linear 8s forwards; }
+  @keyframes tell { to { opacity: 1; } }
 </style>
 <div class="mark">流 nagare</div>
 <div class="bar"><i></i></div>
 <div>starting up</div>
+<div class="slow">first launch installs the python side &mdash; this can take a minute</div>

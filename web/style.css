@@ -187,6 +187,27 @@ svg {
 .btn.tiny { height: 32px; padding: 0 10px; }
 .btn.danger:hover { background: var(--gs-red); color: var(--gs-void); }
 .btn:disabled { color: var(--gs-edge); cursor: default; background: var(--gs-dark); }
+.btn:disabled:hover { background: var(--gs-dark); color: var(--gs-edge); }
+
+/* Back and forward. Square, so the two of them read as one control. */
+.nav-arrows { display: flex; gap: 6px; flex: none; }
+.btn.caret { width: 42px; padding: 0; text-align: center; }
+
+/* What a search is looking for: all / videos / channels / playlists. */
+.seg { display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.seg-btn {
+  font-family: var(--font-pixel);
+  font-size: var(--fs-normal);
+  color: var(--gs-lit);
+  background: var(--gs-abyss);
+  --sq-border: var(--gs-brushed);
+  border: 0;
+  padding: 4px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:hover { color: var(--gs-silver); --sq-border: var(--gs-edge); }
+.seg-btn.on { color: var(--gs-phosphor); background: var(--gs-dark); --sq-border: var(--gs-verdigris); }
 
 /* ------------------------------------------------------------------- views */
 
@@ -581,6 +602,9 @@ svg {
 }
 .mini:hover { --sq-border: var(--gs-edge); }
 .mini-thumb { width: 116px; aspect-ratio: 16/9; object-fit: cover; flex: none; background: var(--gs-body); }
+/* A channel mini has a square avatar where a video has a 16/9 thumb. Pad it out
+   to the same width so one list has one text column. */
+.mini .avatar { margin-inline: 32px; }
 .mini-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .mini-title {
   color: var(--gs-silver);
@@ -993,6 +1017,11 @@ svg {
 .chan-row-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .chan-row-name { color: var(--gs-chrome); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chan-row .btn { flex: none; }
+.chan-row .chan-ident { flex: 1; }
+.chan-row .mini-thumb { width: 96px; }
+
+/* Search hits that are not videos: channels and playlists, above the grid. */
+.hit-rows { display: flex; flex-direction: column; gap: 10px; margin-bottom: var(--gap); }
 
 /* ============================================================ watch meta ===== */
 

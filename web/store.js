@@ -88,6 +88,8 @@ const DEFAULTS = {
   sort: "relevance",
   uploadDate: "any",
   videoDuration: "any",
+  // What a search should come back with: everything, or only one kind of thing.
+  searchOnly: "all",
 };
 
 // Bump when a default changes in a way that should override what is already

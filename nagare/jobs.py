@@ -28,7 +28,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import config, ytx
+from . import auth, config, ytx
 
 _PCT_RE = re.compile(r"\[download\]\s+(\d+(?:\.\d+)?)%")
 
@@ -137,6 +137,10 @@ class JobManager:
         job_id = video.get("id") or ""
         if not job_id:
             raise ValueError("video has no id")
+        # A channel id or a playlist id here would hand yt-dlp a whole channel to
+        # download. Only a video id is a video.
+        if not ytx.VIDEO_ID.fullmatch(job_id):
+            raise ValueError(f"{job_id} is not a video")
 
         existing = self.jobs.get(job_id)
         if existing and existing.state not in TERMINAL:
@@ -241,6 +245,7 @@ class JobManager:
                 proc = await asyncio.create_subprocess_exec(
                     sys.executable, "-m", "yt_dlp", "-q", "--no-warnings",
                     "--no-playlist", "--no-part", "--no-cache-dir",
+                    *auth.cli_args(),
                     "-f", spec, "-o", "-", job.url,
                     stdout=write_fd,
                     stderr=asyncio.subprocess.PIPE,
@@ -320,6 +325,7 @@ class JobManager:
                 or _first_error(ff_err)
                 or f"yt-dlp exited {yt_rc}, ffmpeg exited {ff_rc}"
             )
+            detail = auth.recover(detail)  # opens sign-in + rewrites when it's the bot wall
             self._update(job, state="failed", error=detail, stage="failed")
             self._save(job)
             shutil.rmtree(workdir, ignore_errors=True)
@@ -338,7 +344,7 @@ class JobManager:
         """
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "yt_dlp", "--no-warnings", "--simulate", "--no-playlist",
-            "--no-cache-dir", "-f", fmt,
+            "--no-cache-dir", *auth.cli_args(), "-f", fmt,
             "--print", "%(format_id)s|%(acodec)s|%(duration)s",
             job.url,
             stdout=asyncio.subprocess.PIPE,
@@ -347,7 +353,7 @@ class JobManager:
         out, err = await proc.communicate()
         if proc.returncode != 0:
             message = _first_error(err.decode(errors="replace").splitlines())
-            raise RuntimeError(message or "yt-dlp could not read that video")
+            raise RuntimeError(auth.recover(message) or "yt-dlp could not read that video")
         text = out.decode(errors="replace").strip()
         line = text.splitlines()[-1] if text else ""
         parts = line.split("|")

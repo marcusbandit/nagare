@@ -1,0 +1,80 @@
+# How nagare is wrapped as a desktop app. Driven by ./build.sh, which decides
+# where the artifacts land; nothing here writes outside the repo's Build folder.
+#
+# The python server is not compiled in: it ships as source next to the asar and
+# runs through uv, the same way the checkout does. That keeps one code path for
+# both, and keeps the bundle at Electron's size rather than Electron plus a
+# second interpreter. uv and ffmpeg are the two things the machine must already
+# have, exactly as for `uv run nagare`.
+
+appId: com.nagare.desktop
+productName: Nagare
+copyright: Copyright (c) 2026 Marcus Rosado
+
+# Only the shell goes in the asar. Everything python reads has to stay a real
+# file on disk, because neither uv nor python can look inside an archive.
+files:
+  - electron/**/*
+  - package.json
+extraResources:
+  - from: nagare
+    to: nagare
+    filter:
+      - "**/*.py"
+  - from: web
+    to: web
+  - pyproject.toml
+  - uv.lock
+  - LICENSE
+
+# No dmg and no zip: the ask is a .app you can drag where you want it.
+mac:
+  # Host architecture by default; build.sh --universal asks for the fat build.
+  target:
+    - dir
+  category: public.app-category.video
+  icon: electron/icon.png
+  darkModeSupport: true
+  # There is no developer certificate here, so the bundle is signed ad-hoc.
+  # Enough to satisfy the kernel on Apple silicon, not enough to escape
+  # Gatekeeper's first-run prompt on a machine that did not build it.
+  identity: null
+
+linux:
+  # build.sh picks the targets per distro: an AppImage everywhere, plus deb for
+  # Ubuntu or a pacman package for Arch. This list is only what a bare
+  # `electron-builder --linux` would fall back to. An AppImage needs libfuse2,
+  # which Ubuntu has not shipped by default since 22.04, so the native package is
+  # the one that always works out of the box.
+  target:
+    - AppImage
+  maintainer: Marcus Rosado
+  category: AudioVideo
+  icon: electron/icon.png
+  # Without this the window is not linked to its .desktop entry, so a dock can
+  # end up showing a generic icon beside the real one.
+  syncDesktopName: true
+  synopsis: Watch YouTube downloads while they land
+  description: >
+    A local YouTube frontend built on yt-dlp: search, queue, and watch a video
+    while it is still downloading. Nothing is uploaded anywhere and the library
+    is a folder of plain mp4 files.
+  # Not "nagare": a deb or pacman package links its executable into /usr/bin, and
+  # that name already belongs to the python CLI (`uv tool install .`). This is the
+  # name the checkout's own launcher uses.
+  executableName: nagare-app
+  desktop:
+    entry:
+      Keywords: youtube;video;download;yt-dlp;
+      StartupWMClass: nagare-app
+
+# Native packages should pull in what the app can reasonably get from the
+# distro. uv is packaged on Arch; on Ubuntu/Debian the runtime message points to
+# Astral's installer because the uv package is not reliably present everywhere.
+deb:
+  depends:
+    - ffmpeg
+pacman:
+  depends:
+    - ffmpeg
+    - uv

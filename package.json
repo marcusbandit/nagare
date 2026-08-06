@@ -5,9 +5,15 @@
   "description": "Watch YouTube downloads while they land",
   "main": "electron/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "./build.sh"
   },
   "devDependencies": {
-    "electron": "^40.0.0"
-  }
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "author": "Marcus Rosado",
+  "desktopName": "nagare.desktop",
+  "license": "MIT",
+  "homepage": "https://github.com/marcusbandit/nagare"
 }

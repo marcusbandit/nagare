@@ -50,6 +50,42 @@ straight up. Symlink it onto your PATH if you want it as a command:
 ln -s "$PWD/nagare-app" ~/.local/bin/nagare-app
 ```
 
+### Optional: build an app you can double click
+
+```sh
+./build.sh               # this machine's format
+./build.sh macos         # Build/macOS/Nagare.app
+./build.sh ubuntu        # Build/Ubuntu/Nagare.AppImage and Nagare.deb
+./build.sh arch          # Build/Arch/Nagare.AppImage and Nagare.pkg.tar.xz
+./build.sh all
+```
+
+Everything lands in `Build/` and nothing is installed anywhere: move the `.app`
+to `/Applications` yourself if that is where you want it. `--universal` builds a
+`.app` that also runs on Intel macs; `--arm64` builds the linux artifacts for an
+arm machine instead of x86_64.
+
+Each linux folder holds the same AppImage — one binary that runs on any distro —
+next to the package that distro would rather have: `apt install ./Nagare.deb` on
+Ubuntu, `pacman -U Nagare.pkg.tar.xz` on Arch. Both install to `/opt/Nagare`,
+add a launcher entry, and put the app on your PATH as `nagare-app`, which leaves
+the `nagare` command to the python CLI.
+
+The python side is not compiled in. It ships as source next to the app and runs
+through uv exactly as the checkout does, so **the machine still needs uv and
+ffmpeg** — the same two things `uv run nagare` needs. The app finds them itself
+rather than trusting the PATH a double-clicked app is given, which is almost
+none. The first launch builds the python environment in the app's own data folder
+and takes a minute; every launch after that is immediate.
+
+On Ubuntu, prefer the `.deb` if double-clicking the AppImage complains about
+`libfuse.so.2`: 22.04 and later stopped shipping the FUSE 2 runtime AppImages
+need, and the deb has no such dependency.
+
+macOS builds are signed ad-hoc, because signing properly needs a developer
+certificate. Your own machine will run it; another mac will want a right-click →
+**Open** the first time.
+
 ### Optional: install as a command
 
 ```sh
@@ -71,6 +107,8 @@ anything.
 | `NAGARE_QUALITY`     | `1080`              | `2160`/`1440`/`1080`/`720`/`best`/`audio` |
 | `NAGARE_CONCURRENCY` | `2`                 | Simultaneous downloads                 |
 | `NAGARE_OPEN`        | `1`                 | Open a browser on start; `0` to skip   |
+| `NAGARE_COOKIES_FROM_BROWSER` | (auto) | Browser to read YouTube cookies from, e.g. `firefox`, `chrome:Default`. Overrides the auto-detected default browser |
+| `NAGARE_COOKIES_FILE` | (unset)            | Path to an exported `cookies.txt`; use on a headless/remote box where no browser profile is reachable |
 
 ```sh
 NAGARE_QUALITY=720 NAGARE_HOME=/mnt/media/yt uv run nagare
@@ -86,8 +124,27 @@ from the same package and both are needed.
 **`address already in use`** - something else holds 8737. Use
 `NAGARE_PORT=9000 uv run nagare`.
 
+**`ModuleNotFoundError: No module named 'nagare'` from `uv run nagare`** - macOS,
+when the checkout sits in an iCloud folder (`~/Documents`, `~/Desktop`). iCloud
+marks everything inside `.venv` hidden, python 3.14 skips hidden `.pth` files, and
+an editable install keeps its import path in exactly one of those. Either run
+`uv run python -m nagare`, which imports the checkout directly and does not care,
+or keep the environment out of iCloud:
+`UV_PROJECT_ENVIRONMENT=~/.cache/nagare-venv uv run nagare`.
+
 **A download fails or stalls at 0%** - usually a stale yt-dlp against a YouTube
 change. `uv lock --upgrade-package yt-dlp && uv run nagare`.
+
+**"Sign in to confirm you're not a bot"** - YouTube distrusts anonymous requests
+to its player, which is what downloads, comments and metadata use (search does
+not, which is why search keeps working). nagare answers this by signing the
+requests in with your browser's YouTube cookies: it auto-detects your default
+browser (Firefox, Chrome, Brave, Edge, Safari, Vivaldi, Opera, or a Firefox fork
+like Zen/LibreWolf) and reads the login from it, so **just stay signed in to
+YouTube in that browser**. If a login lapses, nagare reopens YouTube for you and
+says so; sign back in and retry. Point it elsewhere with `NAGARE_COOKIES_FROM_BROWSER`
+or `NAGARE_COOKIES_FILE` (see the table above) — the latter is the way on a
+headless server.
 
 **Video plays but has no sound, or vice versa** - the `best` ladder can hand back
 codecs your browser will not decode. Use the default `1080`, which pins H.264/AAC.
@@ -137,6 +194,7 @@ Two details that are easy to get wrong and are handled here:
 | `nagare/config.py`  | Paths, port, quality ladders. All `NAGARE_*` env vars.    |
 | `nagare/doctor.py`  | Startup preflight: required binaries and install hints.   |
 | `nagare/ytx.py`     | yt-dlp python API: search, URL/playlist resolve, posters. |
+| `nagare/auth.py`    | YouTube sign-in: reads cookies from your browser so the player stops bot-checking. |
 | `nagare/jobs.py`    | The download pipeline and job state machine.              |
 | `nagare/server.py`  | FastAPI: API, SSE progress, byte-range media serving.     |
 | `electron/main.js`  | Desktop shell: spawns the server, owns its lifetime.      |

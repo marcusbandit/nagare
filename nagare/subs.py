@@ -24,7 +24,7 @@ from typing import Any
 
 from yt_dlp import YoutubeDL
 
-from . import config, ytx
+from . import auth, config, ytx
 
 RSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
 
@@ -78,6 +78,7 @@ def _resolve_channel_sync(target: str) -> dict:
         "extract_flat": "in_playlist",
         "playlistend": 1,
         "noprogress": True,
+        **auth.ydl_opts(),
     }
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False) or {}

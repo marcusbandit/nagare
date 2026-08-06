@@ -18,6 +18,8 @@ from typing import Any
 
 from yt_dlp import YoutubeDL
 
+from . import auth
+
 SPONSORBLOCK_API = "https://sponsor.ajay.app/api/skipSegments"
 
 # The categories worth acting on, in the order they should win when they overlap.
@@ -200,6 +202,7 @@ def _subtitle_tracks_sync(video_id: str) -> list[dict]:
         "writesubtitles": True,
         "writeautomaticsub": True,
         "noprogress": True,
+        **auth.ydl_opts(),
     }
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(
@@ -264,6 +267,7 @@ def _vtt_sync(video_id: str, lang: str) -> str:
         "writesubtitles": True,
         "writeautomaticsub": True,
         "noprogress": True,
+        **auth.ydl_opts(),
     }
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(
@@ -303,6 +307,7 @@ def _comments_sync(video_id: str, limit: int) -> dict:
         "extractor_args": {
             "youtube": {"max_comments": [str(limit), "all", str(limit), "8"]}
         },
+        **auth.ydl_opts(),
     }
     with YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
@@ -356,6 +361,7 @@ async def comments(video_id: str, limit: int = 120) -> dict:
     try:
         data = await asyncio.to_thread(_comments_sync, video_id, limit)
     except Exception as exc:  # noqa: BLE001
-        return {"count": 0, "fetched": 0, "comments": [], "error": str(exc)[:200]}
+        # recover() opens sign-in and rewrites the message when this is the bot wall.
+        return {"count": 0, "fetched": 0, "comments": [], "error": auth.recover(str(exc))[:300]}
     _comment_cache[key] = (time.time(), data)
     return data
